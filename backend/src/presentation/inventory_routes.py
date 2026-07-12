@@ -10,6 +10,7 @@ from src.application.inventory_service import InventoryService
 from src.schemas import NewProductRequest, UpdateProductRequest, NewBatchRequest, UpdateBatchRequest, TrashFIFORequest
 
 from src.exceptions import(
+    InvalidBatchCountError,
     ProductAlreadyExistsError,
     ProductNotFoundError,
     ProductBatchNotFoundError
@@ -119,7 +120,7 @@ def add_batch(payload: NewBatchRequest, conn: Connection = Depends(get_db_connec
     except ProductNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     
-    except ValueError as e :
+    except InvalidBatchCountError as e :
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     except Exception as e:
@@ -136,7 +137,7 @@ def update_batch(batch_id: int, payload: UpdateBatchRequest, conn: Connection = 
     except ProductBatchNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
-    except ValueError as e :
+    except InvalidBatchCountError as e :
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     except Exception as e:
@@ -171,7 +172,7 @@ def trash_plants_fifo(payload: TrashFIFORequest, conn: Connection = Depends(get_
     except ProductNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     
-    except ValueError as e :
+    except InvalidBatchCountError as e :
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     except Exception as e:

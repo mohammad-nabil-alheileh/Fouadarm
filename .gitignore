@@ -40,7 +40,7 @@ Thumbs.db
 
 # Environment variables
 .env
-.env.*
+.env
 
 # IDEs
 .vscode/

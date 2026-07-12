@@ -1,5 +1,6 @@
 # src/presentation/report_routes.py
-from fastapi import APIRouter, Depends, HTTPException
+from Fouad_Farm.backend.src.exceptions import OrderNotFound
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.engine import Connection
 from typing import Optional
 from datetime import date
@@ -27,8 +28,12 @@ def get_batches_report(
     Can be filtered by date ranges or restricted to show only lots with stock remaining.
     """
     service = InventoryService(conn, InventoryRepository(conn))
-    data = service.get_active_batches_report(start_date, end_date, only_available)
-    return {"status": "success", "data": data}
+    try:
+        data = service.get_active_batches_report(start_date, end_date, only_available)
+        return {"status": "success", "data": data}
+    
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # =====================================================================
@@ -45,7 +50,11 @@ def get_order_summary(order_id: int, conn: Connection = Depends(get_db_connectio
     try:
         summary = service.get_order_financial_summary(order_id)
         return {"status": "success", "summary": summary}
-    except ValueError as e:
+    
+    except OrderNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -64,8 +73,11 @@ def get_customer_sales_report(
     Sorted from top-spending customer down to the bottom, optionally filtered across a specific time period.
     """
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
-    data = service.get_customer_sales_report(start_date, end_date)
-    return {"status": "success", "data": data}
+    try:
+        data = service.get_customer_sales_report(start_date, end_date)
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.get("/products/ranking")
 def get_product_sales_ranking(
@@ -78,8 +90,11 @@ def get_product_sales_ranking(
     The response is rank-ordered automatically from top-selling items to bottom-selling items.
     """
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
-    data = service.get_top_selling_products_report(start_date, end_date)
-    return {"status": "success", "data": data}
+    try:
+        data = service.get_top_selling_products_report(start_date, end_date)
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.get("/orders/search")
 def search_orders_by_customer(customer_name: str, conn: Connection = Depends(get_db_connection)):
@@ -88,5 +103,8 @@ def search_orders_by_customer(customer_name: str, conn: Connection = Depends(get
     e.g., searching 'jam' will gather all orders matching 'Jamal' with item breakdowns.
     """
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
-    data = service.search_orders_by_customer(customer_name)
-    return {"status": "success", "data": data}
+    try:
+        data = service.search_orders_by_customer(customer_name)
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

@@ -9,7 +9,11 @@ from src.infrastructure.repositories import InventoryRepository, OrderRepository
 from src.infrastructure.tables import orders_table, order_items_table, product_batch_table, payment_table
 
 from src.exceptions import(
-    OrderNotFound
+    InsufficientStockError,
+    InvalidPaymentAmount,
+    OrderIsAlreadyCancelled,
+    OrderNotFound,
+    PaymentNotFound
 )
 
 class OrdersService:
@@ -43,7 +47,7 @@ class OrdersService:
             # Safety check: Ensure global physical stock across all batches can meet demand
             total_available = sum(batch.available_stock for batch in fifo_batches)
             if total_available < quantity_needed:
-                raise ValueError(
+                raise InsufficientStockError(
                     f"Insufficient overall inventory for product ID {product_id}. "
                     f"Requested: {quantity_needed}, Total available: {total_available}."
                 )
@@ -85,7 +89,7 @@ class OrdersService:
         if not order_row:
             raise OrderNotFound(f"Order with ID {order_id} does not exist.")
         if order_row.is_cancelled:
-            raise ValueError(f"Order with ID {order_id} is already cancelled.")
+            raise OrderIsAlreadyCancelled(f"Order with ID {order_id} is already cancelled.")
 
         # 2. Fetch all items associated with this specific order
         items_stmt = select(order_items_table).where(
@@ -144,7 +148,7 @@ class OrdersService:
         if not order_row:
             raise OrderNotFound(f"Order with ID {order_id} does not exist.")
         if order_row.is_deleted:
-            raise ValueError("Cannot edit a deleted order.")
+            raise OrderNotFound("Cannot edit a deleted order.")
 
         # 2. Dynamically map update parameters
         update_values = {}
@@ -182,7 +186,7 @@ class OrdersService:
         if not order_row:
             raise OrderNotFound(f"Order with ID {order_id} does not exist.")
         if order_row.is_cancelled or order_row.is_deleted:
-            raise ValueError("Cannot update a cancelled or deleted order.")
+            raise OrderNotFound("Cannot update a cancelled or deleted order.")
 
         # 2. Fetch current items to REVERT physical stock back to batches
         current_items_stmt = select(order_items_table).where(
@@ -220,7 +224,7 @@ class OrdersService:
             total_available = sum(batch.available_stock for batch in fifo_batches)
             if total_available < quantity_needed:
                 # The database transaction will automatically ROLLBACK everything if this raises
-                raise ValueError(
+                raise InsufficientStockError(
                     f"Insufficient inventory for product ID {product_id} during update. "
                     f"Requested: {quantity_needed}, Available (after calculation): {total_available}."
                 )
@@ -397,16 +401,16 @@ class OrdersService:
         Use Case: Logs an additional payment or deposit against an existing order.
         """
         if amount <= 0:
-            raise ValueError("Payment amount must be greater than 0.")
+            raise InvalidPaymentAmount("Payment amount must be greater than 0.")
 
         # 1. Verify the order exists and is active
         order_stmt = select(orders_table).where(orders_table.c.order_id == order_id)
         order_row = self.conn.execute(order_stmt).fetchone()
         
         if not order_row:
-            raise ValueError(f"Order with ID {order_id} does not exist.")
+            raise OrderNotFound(f"Order with ID {order_id} does not exist.")
         if order_row.is_cancelled or order_row.is_deleted:
-            raise ValueError("Cannot add payments to a cancelled or deleted order.")
+            raise OrderIsAlreadyCancelled("Cannot add payments to a cancelled or deleted order.")
 
         # 2. Record the payment transaction line directly
         stmt = insert(payment_table).values(
@@ -437,16 +441,16 @@ class OrdersService:
         stmt = select(payment_table).where(payment_table.c.payment_id == payment_id)
         row = self.conn.execute(stmt).fetchone()
         if not row:
-            raise ValueError(f"Payment record with ID {payment_id} not found.")
+            raise PaymentNotFound(f"Payment record with ID {payment_id} not found.")
         if row.is_deleted:
-            raise ValueError("Cannot modify a soft-deleted payment transaction.")
+            raise PaymentNotFound("Cannot modify a soft-deleted payment transaction.")
 
         update_values = {}
         if payment_method is not None:
             update_values["payment_method"] = payment_method
         if amount is not None:
             if amount <= 0:
-                raise ValueError("Payment amount must be greater than 0.")
+                raise InvalidPaymentAmount("Payment amount must be greater than 0.")
             update_values["amount"] = Decimal(str(amount))
 
         # 2. Persist the corrected financials to the database
@@ -465,7 +469,7 @@ class OrdersService:
         stmt = select(payment_table).where(payment_table.c.payment_id == payment_id)
         row = self.conn.execute(stmt).fetchone()
         if not row:
-            raise ValueError(f"Payment record with ID {payment_id} not found.")
+            raise PaymentNotFound(f"Payment record with ID {payment_id} not found.")
 
         # 2. Apply soft-delete flag
         update_stmt = (
@@ -484,7 +488,7 @@ class OrdersService:
         order_stmt = select(orders_table).where(orders_table.c.order_id == order_id)
         order_row = self.conn.execute(order_stmt).fetchone()
         if not order_row:
-            raise ValueError(f"Order with ID {order_id} not found.")
+            raise OrderNotFound(f"Order with ID {order_id} not found.")
 
         # 2. Sum up all valid active payments
         payment_stmt = select(payment_table).where(
@@ -532,7 +536,7 @@ class OrdersService:
         stmt = select(orders_table).where(orders_table.c.order_id == order_id)
         row = self.conn.execute(stmt).fetchone()
         if not row:
-            raise ValueError(f"Order with ID {order_id} not found.")
+            raise OrderNotFound(f"Order with ID {order_id} not found.")
 
         # 2. Soft-delete the order header record row
         update_order = (

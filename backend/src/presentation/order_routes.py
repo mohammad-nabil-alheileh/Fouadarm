@@ -1,4 +1,3 @@
-# src/presentation/order_routes.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.engine import Connection
 from typing import List
@@ -9,8 +8,11 @@ from src.application.orders_service import OrdersService
 from src.schemas import PlaceOrderRequest, OrderItemRequest, EditOrderHeaderRequest, ManualPaymentRequest, UpdatePaymentRequest
 
 from src.exceptions import(
+    InvalidBatchCountError,
+    InvalidPaymentAmount,
     OrderNotFound,
-    OrderIsAlreadyCancelled
+    OrderIsAlreadyCancelled,
+    PaymentNotFound
 )
 
 router = APIRouter(prefix="/orders", tags=["Orders & Point of Sale"])
@@ -31,7 +33,7 @@ def place_order(payload: PlaceOrderRequest, conn: Connection = Depends(get_db_co
         items_dict = [item.model_dump() for item in payload.items]
         order_id = service.place_order(payload.customer_name, items_dict, payment_info=payment_info)
         return {"status": "success", "order_id": order_id}
-    except ValueError as e:
+    except InvalidBatchCountError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
     except Exception as e:
@@ -52,7 +54,7 @@ def update_order_items(order_id: int, payload: List[OrderItemRequest], conn: Con
     except OrderNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    except ValueError as e:
+    except InvalidBatchCountError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
     except Exception as e:
@@ -69,7 +71,7 @@ def edit_order_header(order_id: int, payload: EditOrderHeaderRequest, conn: Conn
     except OrderNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
     
-    except ValueError as e:
+    except InvalidBatchCountError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
     except Exception as e:
@@ -99,7 +101,11 @@ def delete_order(order_id: int, conn: Connection = Depends(get_db_connection)):
     try:
         service.delete_order_record(order_id)
         return {"status": "success", "message": "Order record soft-deleted safely."}
-    except ValueError as e:
+    
+    except OrderNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -114,7 +120,11 @@ def add_payment(order_id: int, payload: ManualPaymentRequest, conn: Connection =
     try:
         payment_id = service.add_manual_payment(order_id, payload.payment_method, payload.amount)
         return {"status": "success", "payment_id": payment_id}
-    except ValueError as e:
+    
+    except OrderNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.patch("/payments/{payment_id}")
@@ -124,7 +134,14 @@ def update_payment(payment_id: int, payload: UpdatePaymentRequest, conn: Connect
     try:
         service.update_payment_details(payment_id, payload.payment_method, payload.amount)
         return {"status": "success", "message": "Payment record metrics adjusted."}
-    except ValueError as e:
+
+    except PaymentNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except InvalidPaymentAmount as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/payments/{payment_id}")
@@ -134,5 +151,8 @@ def delete_payment(payment_id: int, conn: Connection = Depends(get_db_connection
     try:
         service.delete_payment_record(payment_id)
         return {"status": "success", "message": "Payment transaction soft-deleted."}
-    except ValueError as e:
+    except PaymentNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

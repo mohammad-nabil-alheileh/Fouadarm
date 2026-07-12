@@ -7,6 +7,7 @@ from sqlalchemy import select, update, and_
 from src.infrastructure.tables import  product_batch_table, products_table
 
 from src.exceptions import (
+    InvalidBatchCountError,
     ProductAlreadyExistsError,
     ProductNotFoundError,
     ProductBatchNotFoundError
@@ -78,7 +79,7 @@ class InventoryService:
         existing_product = self.conn.execute(check_product_stmt).fetchone()
 
         if existing_product is None:
-            raise ProductNotFoundError("المنتج غير موجود")
+            raise ProductNotFoundError("the product does not exist")
 
         return self.inventory_repo.get_active_batches_by_product(start_date, end_date, only_available)
 
@@ -104,10 +105,10 @@ class InventoryService:
         existing_product = self.conn.execute(check_product_stmt).fetchone()
 
         if existing_product is None:
-            raise ProductNotFoundError("المنتج غير موجود")
+            raise ProductNotFoundError("the product does not exist")
 
         if count <= 0:
-            raise ValueError("A new batch must have a plant count greater than 0.")
+            raise InvalidBatchCountError("A new batch must have a plant count greater than 0.")
 
         # 1. Initialize our domain batch instance to structure the data safely
         batch = ProductBatchDomain(
@@ -150,10 +151,10 @@ class InventoryService:
         existing_product = self.conn.execute(check_product_stmt).fetchone()
 
         if existing_product is None:
-            raise ProductNotFoundError("المنتج غير موجود")
+            raise ProductNotFoundError("the product does not exist")
 
         if total_to_trash <= 0:
-            raise ValueError("Quantity to trash must be greater than 0.")
+            raise InvalidBatchCountError("Quantity to trash must be greater than 0.")
 
         # 1. Fetch all active batches for this product sorted by oldest date (FIFO)
         # Using the same repo method we built for the order placement!
@@ -162,7 +163,7 @@ class InventoryService:
         # 2. Safety check: Ensure we actually have enough plants total to trash
         total_available = sum(batch.available_stock for batch in fifo_batches)
         if total_available < total_to_trash:
-            raise ValueError(
+            raise InvalidBatchCountError(
                 f"Cannot trash {total_to_trash} plants. "
                 f"Total available stock across all batches is only {total_available}."
             )
@@ -216,7 +217,7 @@ class InventoryService:
         existing_product = self.conn.execute(check_product_stmt).fetchone()
 
         if existing_product is None:
-            raise ProductNotFoundError("المنتج غير موجود")
+            raise ProductNotFoundError("the product does not exist")
 
         conflict_stmt = select(products_table).where(
             and_(
@@ -227,7 +228,7 @@ class InventoryService:
         existing_product = self.conn.execute(conflict_stmt).fetchone()
         
         if existing_product is not None:
-            raise ProductAlreadyExistsError("منتج بهذا الاسم موجود بالفعل")
+            raise ProductAlreadyExistsError("the product with this name already exists")
 
         if name is None and unit_price is None:
             return  
@@ -271,11 +272,11 @@ class InventoryService:
         # 2. If adjusting the count, verify it doesn't break business rules
         if count is not None:
             if count < 0:
-                raise ValueError("Batch count cannot be negative.")
+                raise InvalidBatchCountError("Batch count cannot be negative.")
             
             # Reconstruct model briefly to check against already trashed plants
             if count < row.trashed:
-                raise ValueError(
+                raise InvalidBatchCountError(
                     f"Cannot set count to {count}. This batch already has "
                     f"{row.trashed} plants recorded as trashed."
                 )
@@ -312,7 +313,7 @@ class InventoryService:
         existing_product = self.conn.execute(check_product_stmt).fetchone()
 
         if existing_product is None:
-            raise ProductNotFoundError("المنتج غير موجود")
+            raise ProductNotFoundError("the product does not exist")
 
         stmt = (
             update(products_table)
