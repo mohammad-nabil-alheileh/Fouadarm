@@ -1,0 +1,14 @@
+FROM nginx:alpine
+
+# Remove default Nginx configuration
+RUN rm /etc/nginx/conf.d/default.conf
+
+# FIX: Point to frontend/nginx.conf since the build context is the project root
+COPY frontend/nginx.conf /etc/nginx/conf.d/
+
+# FIX: Copy the contents of frontend/templates/ directly to the Nginx root directory
+COPY frontend/templates/ /usr/share/nginx/html/
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

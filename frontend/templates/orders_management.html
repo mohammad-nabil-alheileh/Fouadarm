@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>مشتل تفال - إدارة وتعديل الفواتير</title>
+    <link rel="stylesheet" href="css/index.css">
+    <style>
+        .table-card {
+            background-color: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border-color);
+            margin-top: 2rem;
+        }
+        .table-wrapper { overflow-x: auto; margin-top: 1.5rem; }
+        table { width: 100%; border-collapse: collapse; text-align: right; }
+        th, td { padding: 1rem; border-bottom: 1px solid var(--border-color); font-size: 0.95rem; }
+        th { color: var(--text-muted); font-weight: 700; background-color: #f8fafc; }
+        tbody tr:hover { background-color: #f8fafc; }
+        
+        .td-actions { display: flex; gap: 0.5rem; }
+        .btn-edit { background-color: #fef08a; color: #854d0e; padding: 0.5rem 1rem; font-size: 0.85rem; }
+        .btn-edit:hover { background-color: #fde047; }
+        .btn-delete-item { background-color: #fee2e2; color: var(--danger-color); padding: 0.5rem 1rem; font-size: 0.85rem; }
+        .btn-delete-item:hover { background-color: var(--danger-color); color: white; }
+        
+        .hidden { display: none !important; }
+        code { background: #f1f5f9; padding: 0.2rem 0.4rem; border-radius: 4px; font-family: monospace; }
+        
+        .items-section {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background-color: #f8fafc;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .item-edit-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr auto;
+            gap: 1rem;
+            align-items: flex-end;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px dashed var(--border-color);
+        }
+    </style>
+</head>
+<body>
+    
+<div class="layout">
+
+<aside class="sidebar">
+    <div class="logo">🌱 <h2>مشتل تفال</h2></div>
+    <nav class="menu">
+        <a href="/" class="menu-item">🏠 الرئيسية</a>
+        <a href="/products.html" class="menu-item">📦 إدارة المنتجات</a>
+        <a href="/orders_management.html" class="menu-item active">🧾 إدارة وتعديل الفواتير</a>
+        <a href="/search.html" class="menu-item">🔍 البحث</a>
+    </nav>
+</aside>
+
+<main class="content">
+    <div class="page-header">
+        <h1>إدارة وتعديل الفواتير ومبيعات المشتل</h1>
+        <p>عرض الفواتير الحالية، تعديل بيانات العميل، وتحديث كميات المنتجات أو حذفها</p>
+    </div>
+
+    <div id="edit-order-card" class="form-card hidden">
+        <h3 class="section-title" id="form-title">✏️ تعديل بيانات الفاتورة</h3>
+        <form id="order-metadata-form" onsubmit="handleOrderUpdate(event)">
+            <input type="hidden" id="edit-sale-id">
+            
+            <div class="form-grid">
+                <div class="input-group">
+                    <label>اسم العميل</label>
+                    <input type="text" id="customer-name" required>
+                </div>
+                <div class="input-group">
+                    <label>إجمالي قيمة الفاتورة (JD)</label>
+                    <input type="number" id="order-total-price" step="0.01" required>
+                </div>
+            </div>
+
+            <div class="items-section">
+                <h4 style="margin-bottom: 1rem; color: var(--primary-color);">📦 المنتجات المدرجة بالفاتورة:</h4>
+                <div id="order-items-container">
+                    </div>
+            </div>
+
+            <div class="actions" style="margin-top: 1.5rem; margin-bottom: 0;">
+                <button type="submit" class="btn-primary" style="width: auto; padding: 0.85rem 3rem;">حفظ التغييرات العامة</button>
+                <button type="button" class="btn-secondary" onclick="closeEditState()">إغلاق نافذة التعديل</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="table-card">
+        <h3 class="section-title" style="margin-top: 0;">سجل الفواتير والمبيعات الحالية</h3>
+        <div class="table-wrapper">
+            <table id="orders-table">
+                <thead>
+                    <tr>
+                        <th>رقم الفاتورة</th>
+                        <th>اسم العميل</th>
+                        <th>التاريخ</th>
+                        <th>إجمالي الفاتورة</th>
+                        <th>الخيارات والتحكم</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">جاري تحميل سجل الفواتير من السيرفر...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+
+</div>
+
+<script src="js/orders_management.js"></script>
+</body>
+</html>

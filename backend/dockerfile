@@ -1,0 +1,14 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ .
+COPY frontend/templates/ /app/templates/
+
+EXPOSE 5000
+
+# FIX: Run migrations right before starting the Uvicorn server
+CMD ["sh", "-c", "alembic upgrade head && uvicorn src.app:app --host 0.0.0.0 --port 5000"]

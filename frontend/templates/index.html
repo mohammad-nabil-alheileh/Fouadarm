@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>مشتل تفال - إضافة مبيعات</title>
+    <link rel="stylesheet" href="css/index.css">
+</head>
+<body>
+    
+<div class="layout">
+
+<!-- Sidebar -->
+<aside class="sidebar">
+    <div class="logo">🌱 <h2>مشتل تفال</h2></div>
+    <nav class="menu">
+        <a href="/" class="menu-item">🏠 الرئيسية</a>
+        <a href="/products.html" class="menu-item">📦 إدارة المنتجات</a>
+        <a href="/orders_management.html" class="menu-item active">🧾 إدارة وتعديل الفواتير</a>
+        <a href="/search.html" class="menu-item">🔍 البحث</a>
+    </nav>
+</aside>
+
+
+<!-- Main Content -->
+<main class="content">
+
+    <div class="page-header">
+        <h1>إضافة فاتورة مبيعات</h1>
+        <p>إدارة مبيعات مشتل تفال</p>
+    </div>
+
+    <div class="form-card">
+
+        <!-- Customer Info -->
+        <div class="form-grid">
+
+            <div class="input-group">
+                <label>اسم العميل</label>
+                <input
+                    type="text"
+                    id="customer_name"
+                    placeholder="أدخل اسم العميل"
+                    required>
+            </div>
+
+            <div class="input-group ">
+                <label>التاريخ</label>
+                <input type="date" id="sale_date" class="date-padding">
+            </div>
+
+        </div>
+
+        <h3 class="section-title">
+            المنتجات
+        </h3>
+
+        <div id="products_container">
+
+            <div class="product-row margin-bottom">
+
+                <div class="input-group ">
+                    <label>نوع المنتج</label>
+                    <select class="product_type padding-1rem">
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>الكمية</label>
+                    <input
+                        type="number"
+                        class="form-input quantity"
+                        placeholder="ادخل الكمية"
+                        oninput="calculateRowTotal(this)"
+                        onkeydown="if(event.key==='ArrowUp' || event.key==='ArrowDown'){event.preventDefault();}"
+                        onwheel="this.blur()">
+                </div> 
+
+                <div class="input-group">
+                    <label>سعر الوحدة</label>
+                    <input
+                        type="number"
+                        step="0.01"
+                        class="form-input unit_price"
+                        placeholder="ادخل سعر الوحدة"
+                        oninput="calculateRowTotal(this)"
+                        onkeydown="if(event.key==='ArrowUp' || event.key==='ArrowDown'){event.preventDefault();}"
+                        onwheel="this.blur()">
+                </div>
+
+                <div class="input-group">
+                    <label>الإجمالي</label>
+                    <input
+                        type="number"
+                        step="0.01"
+                        class="form-input total_price"
+                        placeholder="الاجمالي">
+                </div>
+
+                <button
+                    class="btn-danger"
+                    onclick="removeRow(this)">
+                    حذف
+                </button>
+
+            </div>
+
+        </div>
+
+        <div class="actions">
+
+            <button
+                class="btn-secondary"
+                onclick="addProductRow()">
+                إضافة منتج
+            </button>
+
+            <div class="total-card">
+                <span>إجمالي الفاتورة</span>
+                <strong id="grand_total">
+                    0.00 JD
+                </strong>
+            </div>
+
+        </div>
+
+        <button
+            class="btn-primary"
+            onclick="saveData()">
+            حفظ الفاتورة
+        </button>
+
+    </div>
+
+</main>
+
+</div>
+
+<script src="js/index.js"></script>
+
+</body>
+</html>

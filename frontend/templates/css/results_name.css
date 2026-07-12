@@ -1,0 +1,100 @@
+/* Search criteria visualization badge */
+.search-meta {
+    background-color: #f1f5f9;
+    border-right: 4px solid var(--primary-color, #2e7d32);
+    padding: 0.75rem 1.25rem;
+    border-radius: 4px;
+    margin-bottom: 2rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.meta-label {
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.meta-value {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+/* Responsive wrapper for table scroll on small displays */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+/* Styled Modern Table Elements */
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: right;
+    font-size: 0.95rem;
+}
+
+.results-table th {
+    background-color: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    padding: 1rem 1.25rem;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.results-table td {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: middle;
+}
+
+.results-table tr:last-child td {
+    border-bottom: none;
+}
+
+.results-table tbody tr:hover {
+    background-color: #fdfdfd;
+}
+
+/* Custom visual highlights inside table context */
+.table-total {
+    font-weight: 700;
+    color: var(--primary-hover, #1b5e20);
+}
+
+.fw-semibold {
+    font-weight: 600;
+}
+
+.text-muted {
+    color: #64748b;
+}
+
+.empty-row {
+    text-align: center;
+    color: #94a3b8;
+    background-color: #f8fafc;
+}
+
+.empty-row td {
+    padding: 3rem 1rem;
+}
+
+/* Back Action Footer alignment */
+.form-actions-footer {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 1.5rem;
+}
+
+.form-actions-footer .btn-danger {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    padding: 0 2rem;
+}

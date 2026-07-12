@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مشتل تفال - البحث</title>
+    <link rel="stylesheet" href="css/index.css">
+    <link rel="stylesheet" href="css/search.css">
+</head>
+<body>
+
+<div class="layout">
+
+<aside class="sidebar">
+    <div class="logo">🌱 <h2>مشتل تفال</h2></div>
+    <nav class="menu">
+        <a href="/" class="menu-item">🏠 الرئيسية</a>
+        <a href="/products.html" class="menu-item">📦 إدارة المنتجات</a>
+        <a href="/orders_management.html" class="menu-item active">🧾 إدارة وتعديل الفواتير</a>
+        <a href="/search.html" class="menu-item">🔍 البحث</a>
+    </nav>
+</aside>
+
+    <main class="content">
+
+        <div class="page-header">
+            <h1>البحث في النظام</h1>
+            <p>ابحث عن فواتير العملاء أو مبيعات المنتجات</p>
+        </div>
+
+        <div class="form-card">
+
+            <form action="/search_by_name" method="GET" class="product-row">
+                <div class="input-group">
+                    <label for="customer_name">اسم العميل</label>
+                    <input 
+                        type="text" 
+                        id="customer_name" 
+                        name="name" 
+                        class="form-input" 
+                        placeholder="أدخل اسم العميل للبحث..." 
+                        required>
+                </div>
+
+                <button type="submit" class="btn-primary">
+                    🔍 بحث بالاسم
+                </button>
+            </form>
+
+            <hr class="form-divider">
+
+            <form id="date-search-form" class="product-row">
+                <div class="input-group">
+                    <label for="from_date">من تاريخ</label>
+                    <input 
+                        type="date" 
+                        id="from_date" 
+                        name="from_date" 
+                        class="form-input" 
+                        required>
+                </div>
+
+                <div class="input-group">
+                    <label for="to_date">إلى تاريخ</label>
+                    <input 
+                        type="date" 
+                        id="to_date" 
+                        name="to_date" 
+                        class="form-input" 
+                        required>
+                </div>
+
+                <div class="search-buttons">
+                    <button 
+                        type="submit" 
+                        class="btn-secondary" 
+                        data-target="date">
+                        👥 بحث العملاء
+                    </button>
+
+                    <button 
+                        type="submit" 
+                        class="btn-primary" 
+                        data-target="products">
+                        📦 بحث المنتجات
+                    </button>
+                </div>
+            </form>
+
+        </div>
+
+    </main>
+
+</div>
+
+<script src="js/search.js"></script>
+</body>
+</html>
