@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel
 from decimal import Decimal
 from typing import Optional, List
@@ -7,13 +9,12 @@ class NewProductRequest(BaseModel):
     unit_price: Decimal
 
 class UpdateProductRequest(BaseModel):
-    name: Optional[str] = None
+    product_name: Optional[str] = None
     unit_price: Optional[Decimal] = None
-
-
 
 class NewBatchRequest(BaseModel):
     product_id: int
+    date_entered: date
     count: int
     quarter: str
     foot: str

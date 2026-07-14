@@ -39,7 +39,8 @@ def place_order(payload: PlaceOrderRequest, conn: Connection = Depends(get_db_co
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.patch("/{order_id}/items")
+
+@router.patch("/{order_id}/items" , status_code=status.HTTP_200_OK)
 def update_order_items(order_id: int, payload: List[OrderItemRequest], conn: Connection = Depends(get_db_connection)):
     """
     Atomically updates line items (adds, removes, or modifies quantities).
@@ -60,7 +61,8 @@ def update_order_items(order_id: int, payload: List[OrderItemRequest], conn: Con
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.patch("/{order_id}/header")
+
+@router.patch("/{order_id}/header",status_code=status.HTTP_200_OK)
 def edit_order_header(order_id: int, payload: EditOrderHeaderRequest, conn: Connection = Depends(get_db_connection)):
     """Updates basic order metadata like the customer's name or a manual invoice price override."""
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
@@ -77,7 +79,8 @@ def edit_order_header(order_id: int, payload: EditOrderHeaderRequest, conn: Conn
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.post("/{order_id}/cancel")
+
+@router.post("/{order_id}/cancel", status_code=status.HTTP_200_OK)
 def cancel_order(order_id: int, conn: Connection = Depends(get_db_connection)):
     """Cancels an order, rolls back physical plant counts to their specific source batches, and voids payments."""
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
@@ -94,7 +97,8 @@ def cancel_order(order_id: int, conn: Connection = Depends(get_db_connection)):
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.delete("/{order_id}")
+
+@router.delete("/{order_id}", status_code=status.HTTP_200_OK)
 def delete_order(order_id: int, conn: Connection = Depends(get_db_connection)):
     """Soft-deletes an order ledger profile so it no longer populates in active sales lookups."""
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
@@ -127,7 +131,8 @@ def add_payment(order_id: int, payload: ManualPaymentRequest, conn: Connection =
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.patch("/payments/{payment_id}")
+
+@router.patch("/payments/{payment_id}", status_code=status.HTTP_200_OK)
 def update_payment(payment_id: int, payload: UpdatePaymentRequest, conn: Connection = Depends(get_db_connection)):
     """Corrects an error on an isolated payment receipt transaction line (e.g., wrong payment method or amount)."""
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
@@ -144,7 +149,8 @@ def update_payment(payment_id: int, payload: UpdatePaymentRequest, conn: Connect
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.delete("/payments/{payment_id}")
+
+@router.delete("/payments/{payment_id}", status_code=status.HTTP_200_OK)
 def delete_payment(payment_id: int, conn: Connection = Depends(get_db_connection)):
     """Soft-deletes a payment entry row from the financial audit history trail."""
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))

@@ -5,7 +5,7 @@ from typing import List, Optional
 class ProductDomain:
     def __init__(self, product_id: int, product_name: str, unit_price: Decimal, is_deleted: bool = False):
         self.product_id = product_id
-        self.name = product_name
+        self.product_name = product_name
         self.unit_price = unit_price
         self.is_deleted = is_deleted
 

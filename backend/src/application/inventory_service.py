@@ -1,4 +1,3 @@
-# src/application/inventory_service.py
 from datetime import date
 from decimal import Decimal
 from typing import Optional, List
@@ -32,26 +31,27 @@ class InventoryService:
         existing_product = self.conn.execute(conflict_stmt).fetchone()
         
         if existing_product is not None:
-            raise ProductAlreadyExistsError("منتج بهذا الاسم موجود بالفعل")
+            raise ProductAlreadyExistsError("a product with this name already exists")
         
-        product = ProductDomain(
-            product_id=0,
+        if unit_price <= 0:
+            raise ValueError("Unit price must be greater than 0.")
+     
+        stmt = products_table.insert().values(
+            product_name=name,
+            unit_price=Decimal(str(unit_price)),
+            created_at=date.today(),
+            is_deleted=False
+        ).returning(products_table.c.product_id)
+
+        result = self.conn.execute(stmt)
+        new_id = result.scalar()  
+
+        return ProductDomain(
+            product_id=new_id,
             product_name=name,
             unit_price=Decimal(str(unit_price)),
             is_deleted=False
         )
-        
-        
-        stmt = products_table.insert().values(
-            product_name=product.name,
-            unit_price=product.unit_price,
-            created_at=date.today(),
-            is_deleted=product.is_deleted
-        )
-        result = self.conn.execute(stmt)
-        return result.inserted_primary_key[0]
-
-    # Add these to InventoryService in src/application/inventory_service.py
 
     def get_active_products_report(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
         """
@@ -65,14 +65,14 @@ class InventoryService:
         """
         return self.inventory_repo.get_all_active_batches(start_date, end_date, only_available)
 
-    def get_active_batches_for_a_product(self, start_date: Optional[date] = None, end_date: Optional[date] = None, only_available: bool = False) -> List[dict]:
+    def get_active_batches_for_a_product(self, product_id: int, start_date: Optional[date] = None, end_date: Optional[date] = None, only_available: bool = False) -> List[dict]:
         """
         Use Case: Fetch active plant batches for nursery reporting for a product (All time or by time period).
         """
 
         check_product_stmt = select(products_table).where(
             and_(
-                products_table.c.product_id == id,
+                products_table.c.product_id == product_id,
                 products_table.c.is_deleted == False
             )
         )
@@ -81,11 +81,12 @@ class InventoryService:
         if existing_product is None:
             raise ProductNotFoundError("the product does not exist")
 
-        return self.inventory_repo.get_active_batches_by_product(start_date, end_date, only_available)
+        return self.inventory_repo.get_active_batches_by_product(product_id, start_date, end_date, only_available)
 
     def record_new_nursery_batch(
         self, 
         product_id: int, 
+        date_entered: date,
         count: int, 
         quarter: str, 
         foot: str, 
@@ -98,7 +99,7 @@ class InventoryService:
 
         check_product_stmt = select(products_table).where(
             and_(
-                products_table.c.product_id == id,
+                products_table.c.product_id == product_id,
                 products_table.c.is_deleted == False
             )
         )
@@ -110,31 +111,28 @@ class InventoryService:
         if count <= 0:
             raise InvalidBatchCountError("A new batch must have a plant count greater than 0.")
 
-        # 1. Initialize our domain batch instance to structure the data safely
-        batch = ProductBatchDomain(
-            product_batch_id=0,  # Placeholder
+
+        stmt = product_batch_table.insert().values(
             product_id=product_id,
-            date_entered=date.today(),
+            date_entered=date_entered,
             count=count,
-            trashed=0,  # Starts perfectly healthy
+            trashed=0,
+            quarter=quarter,
+            foot=foot,
+            line=line,
+            is_deleted=False
+        )
+        result = self.conn.execute(stmt)
+        return ProductBatchDomain(
+            product_batch_id=0,  
+            product_id=product_id,
+            date_entered=date_entered,
+            count=count,
+            trashed=0,
             quarter=quarter,
             foot=foot,
             line=line
         )
-
-        # 2. Persist the record directly into your product_batch_table        
-        stmt = product_batch_table.insert().values(
-            product_id=batch.product_id,
-            date_entered=batch.date_entered,
-            count=batch.count,
-            trashed=batch.trashed,
-            quarter=batch.quarter,
-            foot=batch.foot,
-            line=batch.line,
-            is_deleted=False
-        )
-        result = self.conn.execute(stmt)
-        return result.inserted_primary_key[0]
     
     def register_trashed_plants_fifo(self, product_id: int, total_to_trash: int):
         """
@@ -144,7 +142,7 @@ class InventoryService:
 
         check_product_stmt = select(products_table).where(
             and_(
-                products_table.c.product_id == id,
+                products_table.c.product_id == product_id,
                 products_table.c.is_deleted == False
             )
         )
@@ -208,9 +206,12 @@ class InventoryService:
         Use Case: Updates basic product profiles (name or price changes).
         """
 
+        if unit_price is not None and unit_price <= 0:
+            raise ValueError("Unit price must be greater than 0")
+
         check_product_stmt = select(products_table).where(
             and_(
-                products_table.c.product_id == id,
+                products_table.c.product_id == product_id,
                 products_table.c.is_deleted == False
             )
         )
@@ -219,20 +220,22 @@ class InventoryService:
         if existing_product is None:
             raise ProductNotFoundError("the product does not exist")
 
-        conflict_stmt = select(products_table).where(
-            and_(
-                products_table.c.product_name == name,
-                products_table.c.is_deleted == False
+        if name is not None:
+            conflict_stmt = select(products_table).where(
+                and_(
+                    products_table.c.product_name == name,
+                    products_table.c.product_id != product_id,
+                    products_table.c.is_deleted == False
+                )
             )
-        )
-        existing_product = self.conn.execute(conflict_stmt).fetchone()
-        
-        if existing_product is not None:
-            raise ProductAlreadyExistsError("the product with this name already exists")
+            conflict_product = self.conn.execute(conflict_stmt).fetchone()
+            
+            if conflict_product is not None:
+                raise ProductAlreadyExistsError("the product with this name already exists")
 
         if name is None and unit_price is None:
-            return  
-
+            return
+        
         update_values = {}
         if name is not None:
             update_values["product_name"] = name
@@ -243,7 +246,14 @@ class InventoryService:
             update(products_table)
             .where(products_table.c.product_id == product_id)
             .values(**update_values)
+            .returning(
+                products_table.c.product_id,
+                products_table.c.product_name,
+                products_table.c.unit_price,
+                products_table.c.is_deleted
+            )
         )
+        
         self.conn.execute(stmt)
 
     def update_batch_details(
@@ -271,8 +281,8 @@ class InventoryService:
         
         # 2. If adjusting the count, verify it doesn't break business rules
         if count is not None:
-            if count < 0:
-                raise InvalidBatchCountError("Batch count cannot be negative.")
+            if count <= 0:
+                raise InvalidBatchCountError("Batch count cannot be zero or negative.")
             
             # Reconstruct model briefly to check against already trashed plants
             if count < row.trashed:
@@ -306,7 +316,7 @@ class InventoryService:
 
         check_product_stmt = select(products_table).where(
             and_(
-                products_table.c.product_id == id,
+                products_table.c.product_id == product_id,
                 products_table.c.is_deleted == False
             )
         )

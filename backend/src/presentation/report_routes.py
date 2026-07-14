@@ -1,5 +1,3 @@
-# src/presentation/report_routes.py
-from src.exceptions import OrderNotFound
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.engine import Connection
 from typing import Optional
@@ -9,6 +7,7 @@ from src.connection import get_db_connection
 from src.infrastructure.repositories import InventoryRepository, OrderRepository
 from src.application.inventory_service import InventoryService
 from src.application.orders_service import OrdersService
+from src.exceptions import OrderNotFound
 
 router = APIRouter(prefix="/reports", tags=["Business Intelligence & Reports"])
 
@@ -16,7 +15,7 @@ router = APIRouter(prefix="/reports", tags=["Business Intelligence & Reports"])
 # 📊 INVENTORY LOOKUPS
 # =====================================================================
 
-@router.get("/batches")
+@router.get("/batches", status_code=status.HTTP_200_OK)
 def get_batches_report(
     start_date: Optional[date] = None, 
     end_date: Optional[date] = None, 
@@ -40,7 +39,7 @@ def get_batches_report(
 # 💳 FINANCIAL AUDITING
 # =====================================================================
 
-@router.get("/orders/{order_id}/financial-summary")
+@router.get("/orders/{order_id}/financial-summary", status_code=status.HTTP_200_OK)
 def get_order_summary(order_id: int, conn: Connection = Depends(get_db_connection)):
     """
     Calculates the financial standing of a specific invoice.
@@ -62,7 +61,7 @@ def get_order_summary(order_id: int, conn: Connection = Depends(get_db_connectio
 # 📈 SALES & CUSTOMER INTELLIGENCE
 # =====================================================================
 
-@router.get("/customers")
+@router.get("/customers", status_code=status.HTTP_200_OK)
 def get_customer_sales_report(
     start_date: Optional[date] = None, 
     end_date: Optional[date] = None, 
@@ -79,7 +78,8 @@ def get_customer_sales_report(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.get("/products/ranking")
+
+@router.get("/products/ranking", status_code=status.HTTP_200_OK)
 def get_product_sales_ranking(
     start_date: Optional[date] = None, 
     end_date: Optional[date] = None, 
@@ -96,7 +96,8 @@ def get_product_sales_ranking(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@router.get("/orders/search")
+
+@router.get("/orders/search", status_code=status.HTTP_200_OK)
 def search_orders_by_customer(customer_name: str, conn: Connection = Depends(get_db_connection)):
     """
     Searches and structures historic orders using a partial, case-insensitive customer name look-up string.
