@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
+from src.exceptions import InsufficientStockError, BatchAlreadyAssignedToOrderError,InvalidBatchCountError, InvalidPaymentAmount, OrderNotFound, OrderIsAlreadyCancelled, PaymentNotFound
 
 class ProductDomain:
     def __init__(self, product_id: int, product_name: str, unit_price: Decimal, is_deleted: bool = False):
@@ -31,13 +32,13 @@ class ProductBatchDomain:
     def allocate(self, quantity: int):
         """Deduct stock from this specific lot"""
         if quantity > self.available_stock:
-            raise ValueError(f"Cannot allocate {quantity}. Only {self.available_stock} items left in batch {self.product_batch_id}.")
+            raise InsufficientStockError(f"Cannot allocate {quantity}. Only {self.available_stock} items left in batch {self.product_batch_id}.")
         self.allocated += quantity
 
     def mark_as_deleted(self):
             """Domain Action: Ensures we can't allocate from a dead batch"""
             if self.allocated > 0:
-                raise ValueError("Cannot delete a batch that already has items allocated to orders.")
+                raise BatchAlreadyAssignedToOrderError("Cannot delete a batch that already has items allocated to orders.")
             self.is_deleted = True
 
 
@@ -53,7 +54,8 @@ class PaymentDomain:
 
 
 class OrderItemDomain:
-    def __init__(self, product_batch_id: int, quantity: int, price_per_unit: Decimal, is_deleted: bool = False):
+    def __init__(self, product_id: int, product_batch_id: int, quantity: int, price_per_unit: Decimal, is_deleted: bool = False):
+        self.product_id = product_id
         self.product_batch_id = product_batch_id
         self.quantity = quantity
         self.price_per_unit = price_per_unit
@@ -62,36 +64,42 @@ class OrderItemDomain:
 
 class OrderAggregate:
     def __init__(self, customer_name: str, order_date: date, manual_total_override: Optional[Decimal] = None):
+        if manual_total_override is not None and manual_total_override < 0:
+            raise ValueError("manual_total_override cannot be negative.")
+
         self.customer_name = customer_name
         self.order_date = order_date
         self.items: List[OrderItemDomain] = []
         self.payments: List[PaymentDomain] = []
         self.is_cancelled = False
+        self.is_deleted = False
+        self.order_id = None
         self.manual_total_override = manual_total_override
 
-    def add_item(self, batch: ProductBatchDomain, quantity: int, current_price: Decimal):
+    def add_item(self, batch: ProductBatchDomain, quantity: int, price_per_unit: Decimal):
         """
         Business Rule: Verify stock availability inside the domain 
         before adding it to the order.
         """
         if self.is_cancelled:
-            raise ValueError("Cannot add items to a cancelled order.")
+            raise OrderIsAlreadyCancelled("Cannot add items to a cancelled order.")
         
         # 1. Enforce inventory check
         batch.allocate(quantity)
         
         # 2. Add item to order list
         item = OrderItemDomain(
-            product_batch_id=batch.product_batch_id, 
-            quantity=quantity, 
-            price_per_unit=current_price
+            product_id=batch.product_id,
+            product_batch_id=batch.product_batch_id,
+            quantity=quantity,
+            price_per_unit=price_per_unit
         )
         self.items.append(item)
 
     def add_payment(self, payment_method: str, amount: Decimal, payment_id: int, payment_date: date):
             """Business Rule: Record a payment transaction against this order lifecycle"""
             if self.is_cancelled:
-                raise ValueError("Cannot process payment for a cancelled order.")
+                raise OrderIsAlreadyCancelled("Cannot process payment for a cancelled order.")
             
             # We don't have an order_id yet when creating a brand new order, 
             # the repository will assign it during save.
@@ -112,4 +120,7 @@ class OrderAggregate:
         """
         if self.manual_total_override is not None:
             return self.manual_total_override
-        return sum(item.quantity * item.price_per_unit for item in self.items)
+        return sum(
+            (item.quantity * item.price_per_unit for item in self.items),
+            Decimal("0"),
+        )

@@ -1,13 +1,16 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.engine import Connection
-from typing import List
+from typing import List, Optional
 
 from src.connection import get_db_connection
 from src.infrastructure.repositories import InventoryRepository, OrderRepository
 from src.application.orders_service import OrdersService
-from src.schemas import PlaceOrderRequest, OrderItemRequest, EditOrderHeaderRequest, ManualPaymentRequest, UpdatePaymentRequest
+from src.schemas import OrderResponse, PlaceOrderRequest, OrderItemRequest, EditOrderHeaderRequest, ManualPaymentRequest, UpdatePaymentRequest
 
 from src.exceptions import(
+    InsufficientStockError,
     InvalidBatchCountError,
     InvalidPaymentAmount,
     OrderNotFound,
@@ -21,21 +24,80 @@ router = APIRouter(prefix="/orders", tags=["Orders & Point of Sale"])
 # 🛒 ORDER MANAGEMENT LIFECYCLE
 # =====================================================================
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.get("", status_code=status.HTTP_200_OK)
+def get_all_orders(
+    start_date: Optional[date] = None, 
+    end_date: Optional[date] = None, 
+    conn: Connection = Depends(get_db_connection)
+    ):
+    service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
+    try:
+        data = service.get_grouped_orders(start_date=start_date, end_date=end_date)
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=OrderResponse)
 def place_order(payload: PlaceOrderRequest, conn: Connection = Depends(get_db_connection)):
     """Executes a customer checkout transaction, pulling plant batches using FIFO rules."""
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
     try:
+        # 1. Parse optional payment info
         payment_info = None
         if payload.payment_method and payload.payment_amount:
-            payment_info = {"payment_method": payload.payment_method, "amount": payload.payment_amount}
+            payment_info = {
+                "payment_method": payload.payment_method, 
+                "amount": payload.payment_amount
+            }
             
+        # 2. Extract requested items to pass to service layer
         items_dict = [item.model_dump() for item in payload.items]
-        order_id = service.place_order(payload.customer_name, items_dict, payment_info=payment_info)
-        return {"status": "success", "order_id": order_id}
+        override_total = payload.price_override
+        
+        # 3. Call service (it now returns the completed OrderAggregate object)
+        order = service.place_order(
+            payload.customer_name,
+            items_dict,
+            order_date=payload.order_date,
+            price_override=override_total,
+            payment_info=payment_info
+        )
+        
+        # 4. Serialize internal domain line items into list of dicts matching output schema
+        serialized_items = [
+            {
+                "product_id": item.product_id,
+                "quantity": item.quantity,
+                "price_per_unit": item.price_per_unit
+            }
+            for item in order.items
+        ]
+
+        # 5. Return the full dictionary structure matching OrderResponse
+        payment_method = None
+        if payload.payment_method:
+            payment_method = payload.payment_method
+        elif order.payments:
+            payment_method = order.payments[0].payment_method
+
+        return {
+            "customer_name": order.customer_name,
+            "order_date": order.order_date or date.today(),
+            "items": serialized_items,
+            "total_amount": order.total_price,
+            "payment_method": payment_method
+        }
+    
     except InvalidBatchCountError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
+    # Catch any inventory stock out issues
+    except InsufficientStockError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    
+    except InvalidPaymentAmount as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -156,7 +218,8 @@ def delete_payment(payment_id: int, conn: Connection = Depends(get_db_connection
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
     try:
         service.delete_payment_record(payment_id)
-        return {"status": "success", "message": "Payment transaction soft-deleted."}
+        return {"status": "success", "message": "Payment transaction deleted."}
+    
     except PaymentNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
     

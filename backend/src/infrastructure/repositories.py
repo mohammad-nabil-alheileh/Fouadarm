@@ -1,6 +1,8 @@
 # src/infrastructure/repositories.py
+from src.exceptions import InsufficientStockError
 from sqlalchemy import select, asc, insert, update, and_
-from datetime import date 
+from datetime import date
+from decimal import Decimal
 from typing import List, Optional
 from src.domain.models import OrderAggregate, ProductBatchDomain
 from src.infrastructure.tables import (
@@ -13,21 +15,22 @@ from src.infrastructure.tables import (
 
 class InventoryRepository:
     def __init__(self, conn):
-        self.conn = conn  
+        self.conn = conn
 
-    def get_batches_for_product_fifo(self, product_id: int) -> list[ProductBatchDomain]:
-        """Fetches all active batches for a product, sorted oldest to newest (FIFO)"""
+    def get_batches_for_product_fifo(self, product_id: int) -> List[ProductBatchDomain]:
+        """Return active, sellable batches for a product in FIFO order."""
         stmt = (
             select(product_batch_table)
             .where(
                 product_batch_table.c.product_id == product_id,
-                product_batch_table.c.is_deleted == False
+                product_batch_table.c.is_deleted == False,
+                (product_batch_table.c.count - product_batch_table.c.trashed) > 0,
             )
             .order_by(asc(product_batch_table.c.date_entered))
         )
-        
+
         rows = self.conn.execute(stmt).fetchall()
-        
+
         return [
             ProductBatchDomain(
                 product_batch_id=row.product_batch_id,
@@ -37,11 +40,25 @@ class InventoryRepository:
                 trashed=row.trashed,
                 quarter=row.quarter,
                 foot=row.foot,
-                line=row.line
+                line=row.line,
             )
             for row in rows
         ]
-    
+
+    def get_product_unit_price(self, product_id: int) -> Optional[Decimal]:
+        """Return the catalog unit price for an active product as Decimal, or None if missing."""
+        stmt = (
+            select(products_table.c.unit_price)
+            .where(
+                products_table.c.product_id == product_id,
+                products_table.c.is_deleted == False,
+            )
+        )
+        row = self.conn.execute(stmt).fetchone()
+        if row is None:
+            return None
+        return Decimal(str(row.unit_price))
+
     def get_all_active_products(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
         """Fetches all non-deleted products, optionally filtered by creation date range."""
         stmt = select(products_table).where(products_table.c.is_deleted == False)
@@ -135,7 +152,7 @@ class OrderRepository:
         order_result = self.conn.execute(order_stmt)
         real_order_id = order_result.inserted_primary_key[0]
 
-        # 2. Insert Order Items (Your new schema handles auto-increment item IDs)
+        # 2. Insert Order Items
         for item in order.items:
             item_stmt = insert(order_items_table).values(
                 order_id=real_order_id,
@@ -157,7 +174,7 @@ class OrderRepository:
                 order_id=real_order_id,
                 payment_method=payment.payment_method,
                 amount=payment.amount,
-                date=payment.date,
+                date=payment.payment_date,
                 is_refunded=payment.is_refunded,
                 is_deleted=payment.is_deleted
             )
@@ -244,6 +261,15 @@ class OrderRepository:
         stmt = (
             update(product_batch_table)
             .where(product_batch_table.c.product_batch_id == batch_id)
+            .where(
+            (product_batch_table.c.count - product_batch_table.c.trashed) >= quantity_sold
+            )
             .values(count=product_batch_table.c.count - quantity_sold)
         )
-        self.conn.execute(stmt)
+        result = self.conn.execute(stmt)
+
+        if result.rowcount == 0:
+            raise InsufficientStockError(
+            f"Batch {batch_id} no longer has enough stock to deduct {quantity_sold} units "
+            f"(lost a race with a concurrent order, or batch does not exist)."
+            )

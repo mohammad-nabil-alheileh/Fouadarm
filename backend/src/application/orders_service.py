@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import date
+from collections import defaultdict
 from typing import List, Dict, Optional
 from sqlalchemy import select, update, insert
 
@@ -25,20 +26,34 @@ class OrdersService:
         self, 
         customer_name: str, 
         requested_items: List[Dict], 
+        order_date: Optional[date] = None,
         price_override: Optional[Decimal] = None,
         payment_info: Optional[Dict] = None
-    ) -> int:
+    ) -> OrderAggregate:
         """
         Use Case: Coordinates the FIFO checkout business logic workflow.
         """
         # 1. Instantiate Domain Order Aggregate Core
-        order = OrderAggregate(customer_name=customer_name, manual_total_override=price_override)
-
+        try:
+            order = OrderAggregate(
+                customer_name=customer_name,
+                manual_total_override=price_override,
+                order_date=order_date or date.today()
+            )
+        except ValueError as e:
+            raise InvalidPaymentAmount(str(e))
+        
         # 2. Iterate through each requested product line item
         for item in requested_items:
             product_id = item["product_id"]
             quantity_needed = item["quantity"]
-            current_price = Decimal(str(item["price_per_unit"]))
+            current_price = None
+
+            if hasattr(self.inventory_repo, "get_product_unit_price"):
+                current_price = self.inventory_repo.get_product_unit_price(product_id)
+
+            if current_price is None:
+                current_price = Decimal(str(item.get("price_per_unit") or item.get("unit_price") or 0))
 
             # Pull open lots from the repository, automatically sorted by date_entered (FIFO)
             fifo_batches = self.inventory_repo.get_batches_for_product_fifo(product_id)
@@ -70,11 +85,61 @@ class OrdersService:
         if payment_info:
             order.add_payment(
                 payment_method=payment_info["payment_method"],
-                amount=Decimal(str(payment_info["amount"]))
+                amount=Decimal(str(payment_info["amount"])),
+                payment_date=date.today(),
+                payment_id=None  
             )
 
+        new_order_id = self.order_repo.save(order)
+
         # 5. Hand the finalized domain aggregate to the repository infrastructure to save
-        return self.order_repo.save(order)
+        order.order_id = new_order_id
+        return order
+
+    def get_grouped_orders(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
+        """
+        Groups raw line items back into structured parent orders with nested items,
+        ensuring different orders by the same customer on the same day are not merged.
+        """
+        # 1. Fetch flat rows from repository
+        flat_rows = self.order_repo.get_raw_order_line_items(start_date, end_date)
+        
+        # 2. Group items by a truly unique key: order_id
+        # (We fall back to customer+date only if your raw repository lacks order_id)
+        grouped_data = defaultdict(lambda: {
+            "customer_name": "",
+            "order_date": None,
+            "items": [],
+            "total_amount": Decimal("0.00"),
+            "payment_method": None 
+        })
+        
+        for row in flat_rows:
+            # Check if your raw query has order_id; if not, add it to your SELECT query
+            # or fall back to a safe composite key that includes product or sequence IDs.
+            order_id = row.get("order_id")
+            key = order_id if order_id is not None else (row["customer_name"], row["order_date"])
+            
+            # Populate outer metadata once per unique order
+            if not grouped_data[key]["customer_name"]:
+                grouped_data[key]["customer_name"] = row["customer_name"]
+                grouped_data[key]["order_date"] = row["order_date"]
+                
+            # Append to the nested items list
+            item_price = row["price_per_unit_at_that_time"]
+            quantity = row["quantity"]
+            
+            grouped_data[key]["items"].append({
+                "product_id": row["product_id"],
+                "product_name": row["product_name"],
+                "quantity": quantity,
+                "price_per_unit_at_that_time": item_price
+            })
+            
+            # Sum up line items for total_amount calculation
+            grouped_data[key]["total_amount"] += item_price * quantity
+            
+        return list(grouped_data.values())
 
     def cancel_order(self, order_id: int):
         """
@@ -216,7 +281,13 @@ class OrdersService:
         for item in new_items:
             product_id = item["product_id"]
             quantity_needed = item["quantity"]
-            current_price = Decimal(str(item["price_per_unit"]))
+            current_price = None
+
+            if hasattr(self.inventory_repo, "get_product_unit_price"):
+                current_price = self.inventory_repo.get_product_unit_price(product_id)
+
+            if current_price is None:
+                current_price = Decimal(str(item.get("price_per_unit") or item.get("unit_price") or 0))
 
             fifo_batches = self.inventory_repo.get_batches_for_product_fifo(product_id)
             
@@ -439,10 +510,8 @@ class OrdersService:
         # 1. Verify the payment transaction row exists
         stmt = select(payment_table).where(payment_table.c.payment_id == payment_id)
         row = self.conn.execute(stmt).fetchone()
-        if not row:
+        if not row or row.is_deleted or row.is_refunded:
             raise PaymentNotFound(f"Payment record with ID {payment_id} not found.")
-        if row.is_deleted:
-            raise PaymentNotFound("Cannot modify a soft-deleted payment transaction.")
 
         update_values = {}
         if payment_method is not None:
@@ -467,7 +536,7 @@ class OrdersService:
         # 1. Verify payment exists
         stmt = select(payment_table).where(payment_table.c.payment_id == payment_id)
         row = self.conn.execute(stmt).fetchone()
-        if not row:
+        if not row or row.is_deleted:
             raise PaymentNotFound(f"Payment record with ID {payment_id} not found.")
 
         # 2. Apply soft-delete flag
@@ -534,7 +603,7 @@ class OrdersService:
         # 1. Verify order exists
         stmt = select(orders_table).where(orders_table.c.order_id == order_id)
         row = self.conn.execute(stmt).fetchone()
-        if not row:
+        if not row or row.is_deleted:
             raise OrderNotFound(f"Order with ID {order_id} not found.")
 
         # 2. Soft-delete the order header record row

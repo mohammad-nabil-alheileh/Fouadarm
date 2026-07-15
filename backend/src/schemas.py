@@ -1,6 +1,6 @@
 from datetime import date
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from decimal import Decimal
 from typing import Optional, List
 
@@ -33,13 +33,32 @@ class TrashFIFORequest(BaseModel):
 class OrderItemRequest(BaseModel):
     product_id: int
     quantity: int
-    price_per_unit: Decimal
+    unit_price: Optional[Decimal] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_unit_price(cls, values):
+        if isinstance(values, dict):
+            normalized = dict(values)
+            if normalized.get("price_per_unit") is None and normalized.get("unit_price") is not None:
+                normalized["price_per_unit"] = normalized["unit_price"]
+            return normalized
+        return values
 
 class PlaceOrderRequest(BaseModel):
     customer_name: str
+    order_date: Optional[date] = None
     items: List[OrderItemRequest]
     payment_method: Optional[str] = None
     payment_amount: Optional[Decimal] = None
+    price_override: Optional[Decimal] = None
+
+class OrderResponse(BaseModel):
+    customer_name: str
+    order_date: date
+    items: List[OrderItemRequest]
+    total_amount: Decimal
+    payment_method: Optional[str] = None
 
 class EditOrderHeaderRequest(BaseModel):
     customer_name: Optional[str] = None

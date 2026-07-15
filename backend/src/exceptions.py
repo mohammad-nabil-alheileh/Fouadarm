@@ -36,3 +36,7 @@ class PaymentNotFound(NurseryException):
 class InvalidPaymentAmount(NurseryException):
     """Raised when a payment amount is invalid (e.g., negative or zero)."""
     pass
+
+class BatchAlreadyAssignedToOrderError(NurseryException):
+    """Raised when trying to delete a batch that has already been allocated to an order."""
+    pass
