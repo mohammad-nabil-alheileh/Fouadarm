@@ -14,10 +14,10 @@ origins = [
 # 2. Add the CORS middleware to the application
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,            # Allows requests from these domains
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],              # Allows all HTTP methods (GET, POST, PATCH, DELETE, etc.)
-    allow_headers=["*"],              # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(inventory_router)

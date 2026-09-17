@@ -1,141 +1,82 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
-    <meta charset="UTF-8">
-    <title>مشتل تفال - إضافة مبيعات</title>
-    <link rel="stylesheet" href="css/index.css">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fouad Farm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    
-<div class="layout">
+<div id="app">
 
-<!-- Sidebar -->
-<aside class="sidebar">
-    <div class="logo">🌱 <h2>مشتل تفال</h2></div>
-    <nav class="menu">
-        <a href="/" class="menu-item">🏠 الرئيسية</a>
-        <a href="/products.html" class="menu-item">📦 إدارة المنتجات</a>
-        <a href="/orders_management.html" class="menu-item active">🧾 إدارة وتعديل الفواتير</a>
-        <a href="/search.html" class="menu-item">🔍 البحث</a>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 29C16 29 6 23.5 6 14.5C6 9.5 9.8 6 14.5 6C15.6 6 16.7 6.3 17.6 6.8C18.5 5.1 20.3 4 22.5 4C25.5 4 28 6.5 28 9.5C28 18 16 29 16 29Z" fill="currentColor" opacity="0.15"/>
+        <path d="M16 29V13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M16 18C16 18 9 17 9 10.5C9 7.5 11.2 5 14 5C15.9 5 17.5 6.1 18.3 7.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-name" data-i18n="brand">Fouad Farm</span>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item is-active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 13h5V4H4v9Zm0 7h5v-5H4v5Zm7 0h9V11h-9v9Zm0-16v5h9V4h-9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <span data-i18n="nav_dashboard">Dashboard</span>
+      </button>
+      <button class="nav-item" data-view="inventory">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 8.5 12 4l9 4.5-9 4.5-9-4.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M3 8.5V16l9 4.5 9-4.5V8.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 13v7.5" stroke="currentColor" stroke-width="1.6"/></svg>
+        <span data-i18n="nav_inventory">Products &amp; Batches</span>
+      </button>
+      <button class="nav-item" data-view="pos">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="20" r="1.4" fill="currentColor"/><circle cx="17" cy="20" r="1.4" fill="currentColor"/><path d="M3.5 4h2l1.6 10.4a2 2 0 0 0 2 1.7h7.8a2 2 0 0 0 2-1.6L20.5 8H6.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="nav_pos">New Order</span>
+      </button>
+      <button class="nav-item" data-view="orders">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 3h9l4 4v14H6V3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M15 3v4h4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 12h6M9 15.5h6M9 8.5h2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <span data-i18n="nav_orders">Orders</span>
+      </button>
+      <button class="nav-item" data-view="reports">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 20V10M11 20V4M18 20v-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <span data-i18n="nav_reports">Reports</span>
+      </button>
     </nav>
-</aside>
 
-
-<!-- Main Content -->
-<main class="content">
-
-    <div class="page-header">
-        <h1>إضافة فاتورة مبيعات</h1>
-        <p>إدارة مبيعات مشتل تفال</p>
+    <div class="sidebar-foot">
+      <span class="sidebar-note" data-i18n="sidebar_note">Nursery inventory &amp; point of sale</span>
     </div>
+  </aside>
 
-    <div class="form-card">
-
-        <!-- Customer Info -->
-        <div class="form-grid">
-
-            <div class="input-group">
-                <label>اسم العميل</label>
-                <input
-                    type="text"
-                    id="customer_name"
-                    placeholder="أدخل اسم العميل"
-                    required>
-            </div>
-
-            <div class="input-group ">
-                <label>التاريخ</label>
-                <input type="date" id="sale_date" class="date-padding">
-            </div>
-
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn" id="menu-toggle" aria-label="Menu">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <h1 class="view-title" id="view-title" data-i18n="nav_dashboard">Dashboard</h1>
+      <div class="topbar-actions">
+        <span class="today" id="today-date"></span>
+        <div class="lang-toggle" id="lang-toggle" role="group" aria-label="Language">
+          <button data-lang="en" class="lang-btn">EN</button>
+          <button data-lang="ar" class="lang-btn">AR</button>
         </div>
+      </div>
+    </header>
 
-        <h3 class="section-title">
-            المنتجات
-        </h3>
-
-        <div id="products_container">
-
-            <div class="product-row margin-bottom">
-
-                <div class="input-group ">
-                    <label>نوع المنتج</label>
-                    <select class="product_type padding-1rem">
-                    </select>
-                </div>
-
-                <div class="input-group">
-                    <label>الكمية</label>
-                    <input
-                        type="number"
-                        class="form-input quantity"
-                        placeholder="ادخل الكمية"
-                        oninput="calculateRowTotal(this)"
-                        onkeydown="if(event.key==='ArrowUp' || event.key==='ArrowDown'){event.preventDefault();}"
-                        onwheel="this.blur()">
-                </div> 
-
-                <div class="input-group">
-                    <label>سعر الوحدة</label>
-                    <input
-                        type="number"
-                        step="0.01"
-                        class="form-input unit_price"
-                        placeholder="ادخل سعر الوحدة"
-                        oninput="calculateRowTotal(this)"
-                        onkeydown="if(event.key==='ArrowUp' || event.key==='ArrowDown'){event.preventDefault();}"
-                        onwheel="this.blur()">
-                </div>
-
-                <div class="input-group">
-                    <label>الإجمالي</label>
-                    <input
-                        type="number"
-                        step="0.01"
-                        class="form-input total_price"
-                        placeholder="الاجمالي">
-                </div>
-
-                <button
-                    class="btn-danger"
-                    onclick="removeRow(this)">
-                    حذف
-                </button>
-
-            </div>
-
-        </div>
-
-        <div class="actions">
-
-            <button
-                class="btn-secondary"
-                onclick="addProductRow()">
-                إضافة منتج
-            </button>
-
-            <div class="total-card">
-                <span>إجمالي الفاتورة</span>
-                <strong id="grand_total">
-                    0.00 JD
-                </strong>
-            </div>
-
-        </div>
-
-        <button
-            class="btn-primary"
-            onclick="saveData()">
-            حفظ الفاتورة
-        </button>
-
-    </div>
-
-</main>
-
+    <main id="view-root" class="view-root">
+      <!-- rendered by app.js -->
+    </main>
+  </div>
 </div>
 
-<script src="js/index.js"></script>
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal" id="modal-box"></div>
+</div>
 
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="app.js"></script>
 </body>
 </html>

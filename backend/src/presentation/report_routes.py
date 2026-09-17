@@ -7,8 +7,15 @@ from src.connection import get_db_connection
 from src.infrastructure.repositories import InventoryRepository, OrderRepository
 from src.application.inventory_service import InventoryService
 from src.application.orders_service import OrdersService
-from src.exceptions import OrderNotFound
 
+from src.exceptions import(
+    InsufficientStockError,
+    InvalidBatchCountError,
+    InvalidPaymentAmount,
+    OrderNotFound,
+    OrderIsAlreadyCancelled,
+    PaymentNotFound
+)
 router = APIRouter(prefix="/reports", tags=["Business Intelligence & Reports"])
 
 # =====================================================================
@@ -75,6 +82,7 @@ def get_customer_sales_report(
     try:
         data = service.get_customer_sales_report(start_date, end_date)
         return {"status": "success", "data": data}
+    
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -93,19 +101,38 @@ def get_product_sales_ranking(
     try:
         data = service.get_top_selling_products_report(start_date, end_date)
         return {"status": "success", "data": data}
+    
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.get("/orders/search", status_code=status.HTTP_200_OK)
-def search_orders_by_customer(customer_name: str, conn: Connection = Depends(get_db_connection)):
+def search_orders(
+    customer_name: Optional[str] = None,
+    product_name: Optional[str] = None,
+    payment_method: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    conn: Connection = Depends(get_db_connection),
+):
     """
-    Searches and structures historic orders using a partial, case-insensitive customer name look-up string.
-    e.g., searching 'jam' will gather all orders matching 'Jamal' with item breakdowns.
+    Flexible order lookup: partial, case-insensitive matches on customer name
+    and/or product name, an optional payment method filter, an optional
+    payment_status filter ("paid" or "unpaid"), and an optional order-date
+    range. All filters are optional and combine with AND.
     """
     service = OrdersService(conn, InventoryRepository(conn), OrderRepository(conn))
     try:
-        data = service.search_orders_by_customer(customer_name)
+        data = service.search_orders(
+            customer_name=customer_name,
+            product_name=product_name,
+            payment_method=payment_method,
+            payment_status=payment_status,
+            start_date=start_date,
+            end_date=end_date,
+        )
         return {"status": "success", "data": data}
+
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

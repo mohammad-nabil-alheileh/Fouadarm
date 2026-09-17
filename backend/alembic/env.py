@@ -25,6 +25,13 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 target_metadata = metadata
 
+# Override whatever is hardcoded in alembic.ini with the same DATABASE_URL
+# the app itself uses (set by docker-compose), so migrations always target
+# the real database instead of a stray local one.
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
+
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")

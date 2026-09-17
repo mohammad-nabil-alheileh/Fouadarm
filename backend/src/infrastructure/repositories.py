@@ -1,6 +1,6 @@
 # src/infrastructure/repositories.py
 from src.exceptions import InsufficientStockError
-from sqlalchemy import select, asc, insert, update, and_
+from sqlalchemy import select, asc, insert, update, and_, func
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
@@ -60,15 +60,45 @@ class InventoryRepository:
         return Decimal(str(row.unit_price))
 
     def get_all_active_products(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
-        """Fetches all non-deleted products, optionally filtered by creation date range."""
-        stmt = select(products_table).where(products_table.c.is_deleted == False)
-        
-        # Apply optional date filters dynamically
+        """
+        Fetches all non-deleted products alongside their total aggregate remaining stock 
+        by summing up active, non-deleted batches (count - trashed).
+        """
+        # Calculate available stock for each batch
+        batch_stock = (product_batch_table.c.count - product_batch_table.c.trashed)
+
+        # Build query joining products to their batches
+        stmt = (
+            select(
+                products_table.c.product_id.label("id"), # explicit label to ensure JS matches 'id'
+                products_table.c.product_name,
+                products_table.c.unit_price,
+                # Sum the stock. If no batches exist, default the sum to 0
+                func.coalesce(func.sum(batch_stock), 0).label("quantity") 
+            )
+            .select_from(
+                products_table.outerjoin(
+                    product_batch_table,
+                    and_(
+                        products_table.c.product_id == product_batch_table.c.product_id,
+                        product_batch_table.c.is_deleted == False
+                    )
+                )
+            )
+            .where(products_table.c.is_deleted == False)
+            .group_by(
+                products_table.c.product_id,
+                products_table.c.product_name,
+                products_table.c.unit_price
+            )
+        )
+
+        # Apply optional date filters dynamically if needed
         if start_date:
             stmt = stmt.where(products_table.c.created_at >= start_date)
         if end_date:
             stmt = stmt.where(products_table.c.created_at <= end_date)
-            
+
         rows = self.conn.execute(stmt).fetchall()
         return [dict(row._mapping) for row in rows]
 
@@ -79,10 +109,23 @@ class InventoryRepository:
             only_available: bool = False
         ) -> List[dict]:
             """
-            Fetches active batches across the entire nursery.
+            Fetches active batches across the entire nursery, joined with the
+            product name so callers don't have to look up product_id separately.
             If only_available=True, filters out batches that are completely sold or trashed out.
             """
-            stmt = select(product_batch_table).where(product_batch_table.c.is_deleted == False)
+            stmt = (
+                select(
+                    product_batch_table,
+                    products_table.c.product_name,
+                )
+                .select_from(
+                    product_batch_table.join(
+                        products_table,
+                        product_batch_table.c.product_id == products_table.c.product_id,
+                    )
+                )
+                .where(product_batch_table.c.is_deleted == False)
+            )
             
             # 1. Apply date filters dynamically
             if start_date:
@@ -191,8 +234,10 @@ class OrderRepository:
         """
         stmt = (
             select(
+                orders_table.c.order_id,
                 orders_table.c.customer_name,
                 orders_table.c.order_date,
+                orders_table.c.total_price,
                 products_table.c.product_id,
                 products_table.c.product_name,
                 order_items_table.c.quantity,
@@ -253,6 +298,23 @@ class OrderRepository:
             .order_by(orders_table.c.order_date.desc())
         )
 
+        rows = self.conn.execute(stmt).fetchall()
+        return [dict(row._mapping) for row in rows]
+
+    def get_active_payments(self) -> List[dict]:
+        """
+        Pure Repository Method: Fetches every non-deleted, non-refunded payment
+        row across all orders, for aggregating paid totals and payment methods.
+        """
+        stmt = select(
+            payment_table.c.order_id,
+            payment_table.c.payment_method,
+            payment_table.c.amount,
+            payment_table.c.date,
+        ).where(
+            payment_table.c.is_deleted == False,
+            payment_table.c.is_refunded == False,
+        )
         rows = self.conn.execute(stmt).fetchall()
         return [dict(row._mapping) for row in rows]
 

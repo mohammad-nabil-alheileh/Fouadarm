@@ -103,43 +103,67 @@ class OrdersService:
         """
         # 1. Fetch flat rows from repository
         flat_rows = self.order_repo.get_raw_order_line_items(start_date, end_date)
-        
+
         # 2. Group items by a truly unique key: order_id
         # (We fall back to customer+date only if your raw repository lacks order_id)
         grouped_data = defaultdict(lambda: {
+            "order_id": None,
             "customer_name": "",
             "order_date": None,
             "items": [],
             "total_amount": Decimal("0.00"),
-            "payment_method": None 
+            "payment_method": None
         })
-        
+
         for row in flat_rows:
             # Check if your raw query has order_id; if not, add it to your SELECT query
             # or fall back to a safe composite key that includes product or sequence IDs.
             order_id = row.get("order_id")
             key = order_id if order_id is not None else (row["customer_name"], row["order_date"])
-            
+
             # Populate outer metadata once per unique order
             if not grouped_data[key]["customer_name"]:
+                grouped_data[key]["order_id"] = order_id
                 grouped_data[key]["customer_name"] = row["customer_name"]
                 grouped_data[key]["order_date"] = row["order_date"]
-                
+                # Use the order's actual stored total (respects a manual price
+                # override); it must NOT be recomputed from line items, since
+                # that silently discards any override applied at checkout.
+                grouped_data[key]["total_amount"] = row.get("total_price") or Decimal("0.00")
+
             # Append to the nested items list
             item_price = row["price_per_unit_at_that_time"]
             quantity = row["quantity"]
-            
+
             grouped_data[key]["items"].append({
                 "product_id": row["product_id"],
                 "product_name": row["product_name"],
                 "quantity": quantity,
                 "price_per_unit_at_that_time": item_price
             })
-            
-            # Sum up line items for total_amount calculation
-            grouped_data[key]["total_amount"] += item_price * quantity
-            
-        return list(grouped_data.values())
+
+        # 3. Attach payment totals (amount paid, remaining balance, methods used)
+        payment_rows = self.order_repo.get_active_payments()
+        paid_by_order = defaultdict(lambda: Decimal("0.00"))
+        methods_by_order = defaultdict(set)
+        for p in payment_rows:
+            paid_by_order[p["order_id"]] += p["amount"]
+            methods_by_order[p["order_id"]].add(p["payment_method"])
+
+        orders = list(grouped_data.values())
+        for order in orders:
+            oid = order["order_id"]
+            total_paid = paid_by_order.get(oid, Decimal("0.00"))
+            remaining = order["total_amount"] - total_paid
+            order["total_paid"] = total_paid
+            order["remaining_balance"] = remaining
+            order["is_fully_paid"] = remaining <= 0
+            order["payment_methods"] = sorted(methods_by_order.get(oid, set()))
+            order["payment_method"] = order["payment_methods"][0] if order["payment_methods"] else None
+
+        return orders
+
+
 
     def cancel_order(self, order_id: int):
         """
@@ -347,37 +371,42 @@ class OrdersService:
             "new_total_price": new_total_price
         }
 
-    def search_orders_by_customer(self, search_term: str) -> List[dict]:
+    def search_orders(
+        self,
+        customer_name: Optional[str] = None,
+        product_name: Optional[str] = None,
+        payment_method: Optional[str] = None,
+        payment_status: Optional[str] = None,  # "paid" | "unpaid" | None
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> List[dict]:
         """
-        Use Case: Groups raw items back into structured orders matching the customer search term.
+        Use Case: Flexible order lookup across customer name, product name,
+        payment method used, paid/unpaid status, and a date range. Reuses
+        get_grouped_orders so results carry the same accurate totals and
+        payment info shown everywhere else (respecting price overrides).
         """
-        if not search_term.strip():
-            return []
+        orders = self.get_grouped_orders(start_date=start_date, end_date=end_date)
 
-        raw_rows = self.order_repo.search_raw_orders_by_customer(search_term.strip())
+        def matches(order: dict) -> bool:
+            if customer_name and customer_name.strip():
+                if customer_name.strip().lower() not in order["customer_name"].lower():
+                    return False
+            if product_name and product_name.strip():
+                needle = product_name.strip().lower()
+                if not any(needle in item["product_name"].lower() for item in order["items"]):
+                    return False
+            if payment_method and payment_method.strip():
+                needle = payment_method.strip().lower()
+                if not any(needle in m.lower() for m in order["payment_methods"]):
+                    return False
+            if payment_status == "paid" and not order["is_fully_paid"]:
+                return False
+            if payment_status == "unpaid" and order["is_fully_paid"]:
+                return False
+            return True
 
-        # Group multiple line-item rows back into their parent orders
-        orders_map = {}
-        for row in raw_rows:
-            order_id = row["order_id"]
-            
-            if order_id not in orders_map:
-                orders_map[order_id] = {
-                    "order_id": order_id,
-                    "customer_name": row["customer_name"],
-                    "order_date": row["order_date"],
-                    "total_price": row["total_price"],
-                    "is_cancelled": row["is_cancelled"],
-                    "items": []
-                }
-            
-            orders_map[order_id]["items"].append({
-                "product_name": row["product_name"],
-                "quantity": row["quantity"],
-                "price_per_unit": row["price_per_unit_at_that_time"]
-            })
-
-        return list(orders_map.values())
+        return [o for o in orders if matches(o)]
 
     def get_customer_sales_report(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
             """

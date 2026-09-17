@@ -86,6 +86,7 @@ def delete_product(product_id: int, conn: Connection = Depends(get_db_connection
     try:
         service.soft_delete_product(product_id)
         return {"status": "success", "message": "Product deleted successfully."}
+    
     except ProductNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     
