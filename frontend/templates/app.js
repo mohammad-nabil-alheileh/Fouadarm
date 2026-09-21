@@ -66,6 +66,7 @@ const STRINGS = {
     reports_customers: "Customers",
     reports_ranking: "Top products",
     reports_search: "Search orders",
+    export_excel: "Export to Excel (this month)",
     search_customer_placeholder: "Search by customer name…",
     units_sold: "units sold",
     revenue: "revenue",
@@ -172,6 +173,7 @@ const STRINGS = {
     reports_customers: "الزبائن",
     reports_ranking: "الأكثر مبيعًا",
     reports_search: "بحث في الطلبات",
+    export_excel: "تصدير إلى إكسل (هذا الشهر)",
     search_customer_placeholder: "ابحث باسم الزبون…",
     units_sold: "وحدة مباعة",
     revenue: "الإيرادات",
@@ -1063,14 +1065,21 @@ function openEditOrderModal(orderId, onChange){
 
 async function renderReports(){
   root().innerHTML = `
-    <div class="tabs" id="report-tabs">
-      <button class="tab-btn" data-tab="batches">${t("reports_batches")}</button>
-      <button class="tab-btn" data-tab="customers">${t("reports_customers")}</button>
-      <button class="tab-btn" data-tab="ranking">${t("reports_ranking")}</button>
-      <button class="tab-btn" data-tab="search">${t("reports_search")}</button>
+    <div class="section-head">
+      <div class="tabs" id="report-tabs" style="margin-bottom:0; border-bottom:none;">
+        <button class="tab-btn" data-tab="batches">${t("reports_batches")}</button>
+        <button class="tab-btn" data-tab="customers">${t("reports_customers")}</button>
+        <button class="tab-btn" data-tab="ranking">${t("reports_ranking")}</button>
+        <button class="tab-btn" data-tab="search">${t("reports_search")}</button>
+      </div>
+      <button class="btn btn-accent btn-sm" id="btn-export-excel">${t("export_excel")}</button>
     </div>
+    <div style="border-bottom:1px solid var(--border); margin: -10px 0 18px;"></div>
     <div id="report-body" class="card">${t("loading")}</div>
   `;
+  document.getElementById("btn-export-excel").addEventListener("click", () => {
+    window.open("/reports/export/excel", "_blank");
+  });
   document.querySelectorAll("#report-tabs .tab-btn").forEach(btn => {
     btn.classList.toggle("is-active", btn.dataset.tab === state.reportsTab);
     btn.addEventListener("click", () => {

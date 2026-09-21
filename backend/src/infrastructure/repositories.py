@@ -301,10 +301,11 @@ class OrderRepository:
         rows = self.conn.execute(stmt).fetchall()
         return [dict(row._mapping) for row in rows]
 
-    def get_active_payments(self) -> List[dict]:
+    def get_active_payments(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
         """
         Pure Repository Method: Fetches every non-deleted, non-refunded payment
         row across all orders, for aggregating paid totals and payment methods.
+        Optionally filtered to payments recorded within a date range.
         """
         stmt = select(
             payment_table.c.order_id,
@@ -315,6 +316,10 @@ class OrderRepository:
             payment_table.c.is_deleted == False,
             payment_table.c.is_refunded == False,
         )
+        if start_date:
+            stmt = stmt.where(payment_table.c.date >= start_date)
+        if end_date:
+            stmt = stmt.where(payment_table.c.date <= end_date)
         rows = self.conn.execute(stmt).fetchall()
         return [dict(row._mapping) for row in rows]
 

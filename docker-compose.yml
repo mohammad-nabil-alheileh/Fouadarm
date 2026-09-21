@@ -8,7 +8,7 @@ services:
       - POSTGRES_PASSWORD=fouad_pass
       - POSTGRES_DB=fouad_db
     ports:
-      - "5433:5433"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +32,7 @@ services:
       - ./backend:/app
       - ./logs:/app/logs
     environment:
-      - DATABASE_URL=postgresql://fouad_user:fouad_pass@db:5433/fouad_db
+      - DATABASE_URL=postgresql://fouad_user:fouad_pass@db:5432/fouad_db
     depends_on:
       db:
         condition: service_healthy

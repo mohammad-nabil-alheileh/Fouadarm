@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.engine import Connection
 from typing import Optional
 from datetime import date
@@ -7,6 +8,7 @@ from src.connection import get_db_connection
 from src.infrastructure.repositories import InventoryRepository, OrderRepository
 from src.application.inventory_service import InventoryService
 from src.application.orders_service import OrdersService
+from src.application.excel_export_service import generate_monthly_excel
 
 from src.exceptions import(
     InsufficientStockError,
@@ -134,5 +136,32 @@ def search_orders(
         )
         return {"status": "success", "data": data}
 
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/export/excel", status_code=status.HTTP_200_OK)
+def export_monthly_excel(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    conn: Connection = Depends(get_db_connection),
+):
+    """
+    Manually generates the monthly Excel report (Products, Batches, Orders,
+    Payments, Customers) and returns it as a downloadable file. Defaults to
+    the current calendar month if year/month aren't given; the report is
+    always scoped to that single month (never all-time), and is also saved
+    to the exports/ folder — the same file this endpoint streams back is
+    left on disk, overwriting any earlier export for that month.
+    """
+    if month is not None and not (1 <= month <= 12):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="month must be between 1 and 12")
+    try:
+        filepath = generate_monthly_excel(conn, year=year, month=month)
+        return FileResponse(
+            path=filepath,
+            filename=filepath.split("/")[-1],
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
