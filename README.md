@@ -61,7 +61,7 @@ This builds and starts three containers:
 
 | Service        | What it is                          | Port on your machine |
 |----------------|--------------------------------------|-----------------------|
-| `db`           | Postgres 16                         | `5433` |
+| `db`           | Postgres 16                         | `5432` |
 | `web_backend`  | FastAPI app (Uvicorn)                | `5000` |
 | `web_frontend` | nginx serving the static frontend    | `8080` |
 
