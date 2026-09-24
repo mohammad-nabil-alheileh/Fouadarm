@@ -1,18 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.engine import Connection
 from datetime import date
 from typing import Optional
 
-from src.connection import get_db_connection
-from src.infrastructure.repositories import InventoryRepository
-from src.application.inventory_service import InventoryService
-from src.schemas import NewProductRequest, UpdateProductRequest, NewBatchRequest, UpdateBatchRequest, TrashFIFORequest
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.engine import Connection
 
-from src.exceptions import(
+from src.application.inventory_service import InventoryService
+from src.connection import get_db_connection
+from src.exceptions import (
     InvalidBatchCountError,
     ProductAlreadyExistsError,
+    ProductBatchNotFoundError,
     ProductNotFoundError,
-    ProductBatchNotFoundError
+)
+from src.infrastructure.repositories import InventoryRepository
+from src.schemas import (
+    NewBatchRequest,
+    NewProductRequest,
+    TrashFIFORequest,
+    UpdateBatchRequest,
+    UpdateProductRequest,
 )
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -53,7 +59,7 @@ def list_active_products(
     try:
         data = service.get_active_products_report(start_date, end_date)
         return {"status": "success", "data": data}
-    
+
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -65,13 +71,13 @@ def update_product(product_id: int, payload: UpdateProductRequest, conn: Connect
     try:
         service.update_product_details(product_id, payload.product_name, payload.unit_price)
         return {"status": "success", "message": "Product updated successfully."}
-    
+
     except ProductAlreadyExistsError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    
+
     except ProductNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    
+
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -86,13 +92,12 @@ def delete_product(product_id: int, conn: Connection = Depends(get_db_connection
     try:
         service.soft_delete_product(product_id)
         return {"status": "success", "message": "Product deleted successfully."}
-    
+
     except ProductNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    
+
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
 
 # =====================================================================
 # 🌿 PHYSICAL BATCH LOT ROUTES
@@ -106,15 +111,15 @@ def get_batches_by_product(
     only_available: Optional[bool] = False,
     conn: Connection = Depends(get_db_connection)
 ):
-    """fetches a product batches,  optionally filtered by creation date range (All time if empty), optionally filtered if empty stock (all if empty)"""
+    """Fetches a product batches, optionally filtered by creation date range (All time if empty), optionally filtered if empty stock (all if empty)"""
     service = InventoryService(conn, InventoryRepository(conn))
     try:
         data = service.get_active_batches_for_a_product(product_id, start_date, end_date, only_available)
         return {"status": "success", "data": data}
-    
+
     except ProductNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-
+    
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -124,14 +129,14 @@ def add_batch(payload: NewBatchRequest, conn: Connection = Depends(get_db_connec
     """Logs a new physical incoming plant stock batch lot into specific row sections."""
     service = InventoryService(conn, InventoryRepository(conn))
     try:
-        batch_id = service.record_new_nursery_batch(
+        batch = service.record_new_nursery_batch(
             payload.product_id, payload.date_entered, payload.count, payload.quarter, payload.foot, payload.line
         )
-        return {"status": "success", "batch_id": batch_id}
-    
+        return {"status": "success", "batch_id": batch.product_batch_id}
+
     except ProductNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    
+
     except InvalidBatchCountError as e :
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -146,10 +151,10 @@ def update_batch(batch_id: int, payload: UpdateBatchRequest, conn: Connection = 
     try:
         service.update_batch_details(batch_id, payload.count, payload.quarter, payload.foot, payload.line)
         return {"status": "success", "message": "Batch details updated successfully."}
-    
+
     except ProductBatchNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-
+    
     except InvalidBatchCountError as e :
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -164,7 +169,7 @@ def delete_batch(batch_id: int, conn: Connection = Depends(get_db_connection)):
     try:
         service.soft_delete_batch(batch_id)
         return {"status": "success", "message": "Batch lot soft-deleted successfully."}
-    
+
     except ProductBatchNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
@@ -182,10 +187,10 @@ def trash_plants_fifo(payload: TrashFIFORequest, conn: Connection = Depends(get_
     try:
         service.register_trashed_plants_fifo(payload.product_id, payload.total_to_trash)
         return {"status": "success", "message": f"Successfully trashed {payload.total_to_trash} units via FIFO."}
-    
+
     except ProductNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    
+
     except InvalidBatchCountError as e :
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

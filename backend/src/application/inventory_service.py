@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional, List
 from src.domain.models import ProductDomain, ProductBatchDomain
 from sqlalchemy import select, update, and_
-from src.infrastructure.tables import  product_batch_table, products_table
+from src.infrastructure.tables import product_batch_table, products_table
 
 from src.exceptions import (
     InvalidBatchCountError,
@@ -17,7 +17,7 @@ class InventoryService:
         self.conn = conn
         self.inventory_repo = inventory_repo
 
-    def create_new_product(self, name: str, unit_price: Decimal) -> int:
+    def create_new_product(self, name: str, unit_price: Decimal) -> ProductDomain:
         """
         Use Case: Registers a completely new plant product type in the system.
         """
@@ -29,13 +29,13 @@ class InventoryService:
             )
         )
         existing_product = self.conn.execute(conflict_stmt).fetchone()
-        
+
         if existing_product is not None:
             raise ProductAlreadyExistsError("a product with this name already exists")
-        
+
         if unit_price <= 0:
             raise ValueError("Unit price must be greater than 0.")
-     
+
         stmt = products_table.insert().values(
             product_name=name,
             unit_price=Decimal(str(unit_price)),
@@ -44,7 +44,7 @@ class InventoryService:
         ).returning(products_table.c.product_id)
 
         result = self.conn.execute(stmt)
-        new_id = result.scalar()  
+        new_id = result.scalar()
 
         return ProductDomain(
             product_id=new_id,
@@ -84,16 +84,16 @@ class InventoryService:
         return self.inventory_repo.get_active_batches_by_product(product_id, start_date, end_date, only_available)
 
     def record_new_nursery_batch(
-        self, 
-        product_id: int, 
+        self,
+        product_id: int,
         date_entered: date,
-        count: int, 
-        quarter: str, 
-        foot: str, 
+        count: int,
+        quarter: str,
+        foot: str,
         line: str
-    ) -> int:
+    ) -> ProductBatchDomain:
         """
-        Use Case: Logs a brand new physical batch/lot of plants into a specific 
+        Use Case: Logs a brand new physical batch/lot of plants into a specific
         nursery location path (Quarter, Foot, Line) for paperwork tracking.
         """
 
@@ -111,7 +111,6 @@ class InventoryService:
         if count <= 0:
             raise InvalidBatchCountError("A new batch must have a plant count greater than 0.")
 
-
         stmt = product_batch_table.insert().values(
             product_id=product_id,
             date_entered=date_entered,
@@ -123,8 +122,9 @@ class InventoryService:
             is_deleted=False
         )
         result = self.conn.execute(stmt)
+        new_batch_id = result.inserted_primary_key[0]
         return ProductBatchDomain(
-            product_batch_id=0,  
+            product_batch_id=new_batch_id,
             product_id=product_id,
             date_entered=date_entered,
             count=count,
@@ -133,10 +133,10 @@ class InventoryService:
             foot=foot,
             line=line
         )
-    
+
     def register_trashed_plants_fifo(self, product_id: int, total_to_trash: int):
         """
-        Use Case: Automatically tracks and attributes dead plants to the 
+        Use Case: Automatically tracks and attributes dead plants to the
         oldest available batches (FIFO) for a given product.
         """
 
@@ -192,15 +192,15 @@ class InventoryService:
     def get_product_stock_summary(self, product_id: int) -> dict:
         """Use Case: Returns totals for total count, total trashed, and total sellable left."""
         fifo_batches = self.inventory_repo.get_batches_for_product_fifo(product_id)
-        
+
         total_remaining_sellable = sum(batch.available_stock for batch in fifo_batches)
-        
+
         return {
             "product_id": product_id,
             "total_sellable_stock": total_remaining_sellable,
             "active_batches_count": len([b for b in fifo_batches if b.available_stock > 0])
         }
-    
+
     def update_product_details(self, product_id: int, name: Optional[str], unit_price: Optional[Decimal] = None):
         """
         Use Case: Updates basic product profiles (name or price changes).
@@ -229,13 +229,13 @@ class InventoryService:
                 )
             )
             conflict_product = self.conn.execute(conflict_stmt).fetchone()
-            
+
             if conflict_product is not None:
                 raise ProductAlreadyExistsError("the product with this name already exists")
 
         if name is None and unit_price is None:
             return
-        
+
         update_values = {}
         if name is not None:
             update_values["product_name"] = name
@@ -246,26 +246,20 @@ class InventoryService:
             update(products_table)
             .where(products_table.c.product_id == product_id)
             .values(**update_values)
-            .returning(
-                products_table.c.product_id,
-                products_table.c.product_name,
-                products_table.c.unit_price,
-                products_table.c.is_deleted
-            )
         )
-        
+
         self.conn.execute(stmt)
 
     def update_batch_details(
-        self, 
-        product_batch_id: int, 
+        self,
+        product_batch_id: int,
         count: Optional[int] = None,
         quarter: Optional[str] = None,
         foot: Optional[str] = None,
         line: Optional[str] = None
     ):
         """
-        Use Case: Administrative adjustment for shifting plant locations 
+        Use Case: Administrative adjustment for shifting plant locations
         or fixing manual clerical errors in batch stock counts.
         """
 
@@ -278,12 +272,12 @@ class InventoryService:
             raise ProductBatchNotFoundError(f"Batch with ID {product_batch_id} does not exist.")
 
         update_values = {}
-        
+
         # 2. If adjusting the count, verify it doesn't break business rules
         if count is not None:
             if count <= 0:
                 raise InvalidBatchCountError("Batch count cannot be zero or negative.")
-            
+
             # Reconstruct model briefly to check against already trashed plants
             if count < row.trashed:
                 raise InvalidBatchCountError(
@@ -310,7 +304,7 @@ class InventoryService:
 
     def soft_delete_product(self, product_id: int):
         """
-        Use Case: Flags a product type as deleted so it no longer appears 
+        Use Case: Flags a product type as deleted so it no longer appears
         in client menus or search profiles.
         """
 

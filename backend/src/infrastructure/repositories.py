@@ -1,17 +1,20 @@
 # src/infrastructure/repositories.py
-from src.exceptions import InsufficientStockError
-from sqlalchemy import select, asc, insert, update, and_, func
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
+
+from sqlalchemy import and_, asc, func, insert, select, update
+
 from src.domain.models import OrderAggregate, ProductBatchDomain
+from src.exceptions import InsufficientStockError
 from src.infrastructure.tables import (
+    order_items_table,
+    orders_table,
+    payment_table,
+    product_batch_table,
     products_table,
-    product_batch_table, 
-    orders_table, 
-    order_items_table, 
-    payment_table
 )
+
 
 class InventoryRepository:
     def __init__(self, conn):
@@ -156,7 +159,7 @@ class InventoryRepository:
         # Base query: filter by active batches AND the specific product_id
         stmt = select(product_batch_table).where(
             product_batch_table.c.is_deleted == False,
-            product_batch_table.c.product_id == product_id  # Filter for the specific product
+            product_batch_table.c.product_id == product_id
         )
         
         # 1. Apply date filters dynamically
@@ -225,8 +228,6 @@ class OrderRepository:
 
         return real_order_id
 
-    # In src/infrastructure/repositories.py
-
     def get_raw_order_line_items(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
         """
         Pure Repository Method: Just fetches raw order items joined with product 
@@ -265,42 +266,6 @@ class OrderRepository:
         rows = self.conn.execute(stmt).fetchall()
         return [dict(row._mapping) for row in rows]
 
-    def search_raw_orders_by_customer(self, search_term: str) -> List[dict]:
-        """
-        Pure Repository Method: Fetches all non-deleted order rows where 
-        the customer name matches the search term (case-insensitive partial match).
-        """
-
-        stmt = (
-            select(
-                orders_table.c.order_id,
-                orders_table.c.customer_name,
-                orders_table.c.order_date,
-                orders_table.c.total_price,
-                orders_table.c.is_cancelled,
-                products_table.c.product_name,
-                order_items_table.c.quantity,
-                order_items_table.c.price_per_unit_at_that_time
-            )
-            .select_from(
-                order_items_table
-                .join(orders_table, order_items_table.c.order_id == orders_table.c.order_id)
-                .join(product_batch_table, order_items_table.c.product_batch_id == product_batch_table.c.product_batch_id)
-                .join(products_table, product_batch_table.c.product_id == products_table.c.product_id)
-            )
-            .where(
-                and_(
-                    orders_table.c.customer_name.ilike(f"%{search_term}%"),
-                    orders_table.c.is_deleted == False,
-                    order_items_table.c.is_deleted == False
-                )
-            )
-            .order_by(orders_table.c.order_date.desc())
-        )
-
-        rows = self.conn.execute(stmt).fetchall()
-        return [dict(row._mapping) for row in rows]
-
     def get_active_payments(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
         """
         Pure Repository Method: Fetches every non-deleted, non-refunded payment
@@ -329,7 +294,7 @@ class OrderRepository:
             update(product_batch_table)
             .where(product_batch_table.c.product_batch_id == batch_id)
             .where(
-            (product_batch_table.c.count - product_batch_table.c.trashed) >= quantity_sold
+                (product_batch_table.c.count - product_batch_table.c.trashed) >= quantity_sold
             )
             .values(count=product_batch_table.c.count - quantity_sold)
         )
@@ -337,6 +302,6 @@ class OrderRepository:
 
         if result.rowcount == 0:
             raise InsufficientStockError(
-            f"Batch {batch_id} no longer has enough stock to deduct {quantity_sold} units "
-            f"(lost a race with a concurrent order, or batch does not exist)."
+                f"Batch {batch_id} no longer has enough stock to deduct {quantity_sold} units "
+                f"(lost a race with a concurrent order, or batch does not exist)."
             )
