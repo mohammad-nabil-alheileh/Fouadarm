@@ -1,26 +1,20 @@
-from collections import defaultdict
-from datetime import date
 from decimal import Decimal
-from typing import Dict, List, Optional
-
-from sqlalchemy import insert, select, update
+from datetime import date
+from collections import defaultdict
+from typing import List, Dict, Optional
+from sqlalchemy import select, update, insert
 
 from src.domain.models import OrderAggregate
-from src.exceptions import (
+from src.infrastructure.repositories import InventoryRepository, OrderRepository
+from src.infrastructure.tables import orders_table, order_items_table, product_batch_table, payment_table
+
+from src.exceptions import(
     InsufficientStockError,
     InvalidPaymentAmount,
     OrderIsAlreadyCancelled,
     OrderNotFound,
-    PaymentNotFound,
+    PaymentNotFound
 )
-from src.infrastructure.repositories import InventoryRepository, OrderRepository
-from src.infrastructure.tables import (
-    order_items_table,
-    orders_table,
-    payment_table,
-    product_batch_table,
-)
-
 
 class OrdersService:
     def __init__(self, conn, inventory_repo: InventoryRepository, order_repo: OrderRepository):
@@ -29,9 +23,9 @@ class OrdersService:
         self.order_repo = order_repo
 
     def place_order(
-        self,
-        customer_name: str,
-        requested_items: List[Dict],
+        self, 
+        customer_name: str, 
+        requested_items: List[Dict], 
         order_date: Optional[date] = None,
         price_override: Optional[Decimal] = None,
         payment_info: Optional[Dict] = None
@@ -48,7 +42,7 @@ class OrdersService:
             )
         except ValueError as e:
             raise InvalidPaymentAmount(str(e))
-
+        
         # 2. Iterate through each requested product line item
         for item in requested_items:
             product_id = item["product_id"]
@@ -63,7 +57,7 @@ class OrdersService:
 
             # Pull open lots from the repository, automatically sorted by date_entered (FIFO)
             fifo_batches = self.inventory_repo.get_batches_for_product_fifo(product_id)
-
+            
             # Safety check: Ensure global physical stock across all batches can meet demand
             total_available = sum(batch.available_stock for batch in fifo_batches)
             if total_available < quantity_needed:
@@ -76,13 +70,13 @@ class OrdersService:
             for batch in fifo_batches:
                 if quantity_needed <= 0:
                     break
-
+                
                 available = batch.available_stock
                 if available <= 0:
-                    continue
+                    continue  
 
                 take_quantity = min(quantity_needed, available)
-
+                
                 # Execute allocation internal domain rules
                 order.add_item(batch, take_quantity, current_price)
                 quantity_needed -= take_quantity
@@ -93,6 +87,7 @@ class OrdersService:
                 payment_method=payment_info["payment_method"],
                 amount=Decimal(str(payment_info["amount"])),
                 payment_date=date.today(),
+                payment_id=None  
             )
 
         new_order_id = self.order_repo.save(order)
@@ -168,15 +163,17 @@ class OrdersService:
 
         return orders
 
+
+
     def cancel_order(self, order_id: int):
         """
-        Use Case: Cancels an order, rolls back physical stock allocations
+        Use Case: Cancels an order, rolls back physical stock allocations 
         directly to their original source batches, and soft-deletes payments.
         """
         # 1. Verify the order exists and isn't already cancelled
         order_stmt = select(orders_table).where(orders_table.c.order_id == order_id)
         order_row = self.conn.execute(order_stmt).fetchone()
-
+        
         if not order_row:
             raise OrderNotFound(f"Order with ID {order_id} does not exist.")
         if order_row.is_cancelled:
@@ -223,19 +220,19 @@ class OrdersService:
         self.conn.execute(update_order_stmt)
 
     def edit_order_header(
-        self,
-        order_id: int,
-        customer_name: Optional[str] = None,
+        self, 
+        order_id: int, 
+        customer_name: Optional[str] = None, 
         price_override: Optional[Decimal] = None
     ):
         """
-        Use Case: Edits top-level order header details like customer name
+        Use Case: Edits top-level order header details like customer name 
         or applying an invoice-wide total price override manually.
         """
         # 1. Verify the order exists and is active
         order_stmt = select(orders_table).where(orders_table.c.order_id == order_id)
         order_row = self.conn.execute(order_stmt).fetchone()
-
+        
         if not order_row:
             raise OrderNotFound(f"Order with ID {order_id} does not exist.")
         if order_row.is_deleted:
@@ -245,7 +242,7 @@ class OrdersService:
         update_values = {}
         if customer_name is not None:
             update_values["customer_name"] = customer_name
-
+            
         if price_override is not None:
             update_values["total_price"] = Decimal(str(price_override))
 
@@ -261,20 +258,19 @@ class OrdersService:
     def update_order_items(self, order_id: int, new_items: List[Dict]) -> dict:
         """
         Use Case: Updates an entire order's item list (adds, removes, or modifies quantities).
-
+        
         Strategy:
         1. Temporarily return all current order item stocks back to their source batches.
         2. Clear the old order item entries.
         3. Run the standard FIFO allocation logic using the fresh 'new_items' list.
-        4. Recalculate and update the order header total price — unless a manual
-           price override is currently in effect, in which case it's left alone.
-
+        4. Recalculate and update the order header total price.
+        
         new_items format: [{"product_id": 1, "quantity": 30, "price_per_unit": 12.50}]
         """
         # 1. Verify the order exists and is active
         order_stmt = select(orders_table).where(orders_table.c.order_id == order_id)
         order_row = self.conn.execute(order_stmt).fetchone()
-
+        
         if not order_row:
             raise OrderNotFound(f"Order with ID {order_id} does not exist.")
         if order_row.is_cancelled or order_row.is_deleted:
@@ -286,18 +282,6 @@ class OrdersService:
             order_items_table.c.is_deleted == False
         )
         current_items = self.conn.execute(current_items_stmt).fetchall()
-
-        # Detect whether a manual price override is currently in effect. There's
-        # no separate column recording "this total was manually overridden" —
-        # total_price just holds whatever the final number is. So we check: does
-        # the stored total already match what these (about-to-be-replaced) items
-        # compute to? If it doesn't, someone applied an override via
-        # edit_order_header, and this update must not silently discard it.
-        old_computed_total = sum(
-            (Decimal(str(item.quantity)) * Decimal(str(item.price_per_unit_at_that_time)) for item in current_items),
-            Decimal("0.00"),
-        )
-        has_manual_override = Decimal(str(order_row.total_price)) != old_computed_total
 
         for item in current_items:
             rollback_stmt = (
@@ -317,7 +301,7 @@ class OrdersService:
 
         # 4. Re-allocate using FIFO with the newly requested items array
         new_total_price = Decimal("0.00")
-
+        
         for item in new_items:
             product_id = item["product_id"]
             quantity_needed = item["quantity"]
@@ -330,7 +314,7 @@ class OrdersService:
                 current_price = Decimal(str(item.get("price_per_unit") or item.get("unit_price") or 0))
 
             fifo_batches = self.inventory_repo.get_batches_for_product_fifo(product_id)
-
+            
             total_available = sum(batch.available_stock for batch in fifo_batches)
             if total_available < quantity_needed:
                 # The database transaction will automatically ROLLBACK everything if this raises
@@ -347,7 +331,7 @@ class OrdersService:
                     continue
 
                 take_quantity = min(quantity_needed, available)
-
+                
                 # Insert the fresh replacement item allocation row
                 insert_item_stmt = insert(order_items_table).values(
                     order_id=order_id,
@@ -371,11 +355,9 @@ class OrdersService:
                 new_total_price += take_quantity * current_price
                 quantity_needed -= take_quantity
 
-        # 5. Update the order header's total price — but only if there wasn't a
-        # manual override in effect before this edit. If there was, leave the
-        # stored total alone (call edit_order_header separately to change or
-        # clear it); otherwise, adopt the freshly computed FIFO total.
-        if not has_manual_override:
+        # 5. Update the order header header price calculation totals
+        # If the original order didn't have a manual price override, update total_price
+        if order_row.total_price == Decimal("0.00") or order_row.total_price is not None:
             update_header_stmt = (
                 update(orders_table)
                 .where(orders_table.c.order_id == order_id)
@@ -383,12 +365,10 @@ class OrdersService:
             )
             self.conn.execute(update_header_stmt)
 
-        final_total_price = order_row.total_price if has_manual_override else new_total_price
-
         return {
             "order_id": order_id,
             "status": "updated",
-            "new_total_price": final_total_price
+            "new_total_price": new_total_price
         }
 
     def search_orders(
@@ -429,58 +409,59 @@ class OrdersService:
         return [o for o in orders if matches(o)]
 
     def get_customer_sales_report(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
-        """
-        Use Case: Logic to calculate total quantities and detailed item lists per customer,
-        sorted from top-buyer to bottom-buyer based on total items bought.
-        """
-        # 1. Fetch raw line items from the repository
-        raw_items = self.order_repo.get_raw_order_line_items(start_date, end_date)
+            """
+            Use Case: Logic to calculate total quantities and detailed item lists per customer,
+            sorted from top-buyer to bottom-buyer based on total items bought.
+            """
+            # 1. Fetch raw line items from the repository
+            raw_items = self.order_repo.get_raw_order_line_items(start_date, end_date)
+            
+            # 2. Build the aggregated customer profiles
+            customer_profiles = {}
+            for row in raw_items:
+                name = row["customer_name"]
+                p_name = row["product_name"]
+                qty = row["quantity"]
+                
+                if name not in customer_profiles:
+                    customer_profiles[name] = {
+                        "customer_name": name,
+                        "total_items_bought": 0,
+                        # Internal dictionary to easily track quantities per distinct product
+                        "_items_dict": {} 
+                    }
+                
+                # Increment total volume
+                customer_profiles[name]["total_items_bought"] += qty
+                
+                # Group specific plant quantities under this customer
+                if p_name not in customer_profiles[name]["_items_dict"]:
+                    customer_profiles[name]["_items_dict"][p_name] = 0
+                customer_profiles[name]["_items_dict"][p_name] += qty
 
-        # 2. Build the aggregated customer profiles
-        customer_profiles = {}
-        for row in raw_items:
-            name = row["customer_name"]
-            p_name = row["product_name"]
-            qty = row["quantity"]
+            # 3. Flatten the internal items dict into a clean array for the final response
+            final_report = []
+            for profile in customer_profiles.values():
+                formatted_items = [
+                    {"product_name": name, "quantity_bought": total_qty}
+                    for name, total_qty in profile["_items_dict"].items()
+                ]
+                
+                final_report.append({
+                    "customer_name": profile["customer_name"],
+                    "total_items_bought": profile["total_items_bought"],
+                    "items_detailed": formatted_items
+                })
 
-            if name not in customer_profiles:
-                customer_profiles[name] = {
-                    "customer_name": name,
-                    "total_items_bought": 0,
-                    # Internal dictionary to easily track quantities per distinct product
-                    "_items_dict": {}
-                }
+            # 4. Sort from top buyer to bottom buyer
+            sorted_report = sorted(
+                final_report,
+                key=lambda customer: customer["total_items_bought"],
+                reverse=True
+            )
 
-            # Increment total volume
-            customer_profiles[name]["total_items_bought"] += qty
+            return sorted_report
 
-            # Group specific plant quantities under this customer
-            if p_name not in customer_profiles[name]["_items_dict"]:
-                customer_profiles[name]["_items_dict"][p_name] = 0
-            customer_profiles[name]["_items_dict"][p_name] += qty
-
-        # 3. Flatten the internal items dict into a clean array for the final response
-        final_report = []
-        for profile in customer_profiles.values():
-            formatted_items = [
-                {"product_name": name, "quantity_bought": total_qty}
-                for name, total_qty in profile["_items_dict"].items()
-            ]
-
-            final_report.append({
-                "customer_name": profile["customer_name"],
-                "total_items_bought": profile["total_items_bought"],
-                "items_detailed": formatted_items
-            })
-
-        # 4. Sort from top buyer to bottom buyer
-        sorted_report = sorted(
-            final_report,
-            key=lambda customer: customer["total_items_bought"],
-            reverse=True
-        )
-
-        return sorted_report
 
     def get_top_selling_products_report(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[dict]:
         """
@@ -489,7 +470,7 @@ class OrdersService:
         """
         # 1. Get raw rows from repository
         raw_items = self.order_repo.get_raw_order_line_items(start_date, end_date)
-
+        
         # 2. Execute business aggregation logic
         product_metrics = {}
         for row in raw_items:
@@ -501,17 +482,17 @@ class OrdersService:
                     "total_quantity_sold": 0,
                     "total_revenue": Decimal("0.00")
                 }
-
+            
             product_metrics[pid]["total_quantity_sold"] += row["quantity"]
             product_metrics[pid]["total_revenue"] += Decimal(str(row["quantity"])) * Decimal(str(row["price_per_unit_at_that_time"]))
 
         # 3. Sort the results from top to bottom based on total quantity sold
         sorted_report = sorted(
-            product_metrics.values(),
-            key=lambda item: item["total_quantity_sold"],
+            product_metrics.values(), 
+            key=lambda item: item["total_quantity_sold"], 
             reverse=True
         )
-
+        
         return sorted_report
 
     def add_manual_payment(self, order_id: int, payment_method: str, amount: Decimal) -> int:
@@ -524,7 +505,7 @@ class OrdersService:
         # 1. Verify the order exists and is active
         order_stmt = select(orders_table).where(orders_table.c.order_id == order_id)
         order_row = self.conn.execute(order_stmt).fetchone()
-
+        
         if not order_row:
             raise OrderNotFound(f"Order with ID {order_id} does not exist.")
         if order_row.is_cancelled or order_row.is_deleted:
@@ -543,13 +524,13 @@ class OrdersService:
         return result.inserted_primary_key[0]
 
     def update_payment_details(
-        self,
-        payment_id: int,
-        payment_method: Optional[str] = None,
+        self, 
+        payment_id: int, 
+        payment_method: Optional[str] = None, 
         amount: Optional[Decimal] = None
     ):
         """
-        Use Case: Corrects financial mistakes on a payment log row
+        Use Case: Corrects financial mistakes on a payment log row 
         (e.g., wrong payment method typed or incorrect amount entered).
         """
         if payment_method is None and amount is None:
@@ -597,7 +578,7 @@ class OrdersService:
 
     def get_order_financial_summary(self, order_id: int) -> dict:
         """
-        Use Case: Compares total order price against total payments made
+        Use Case: Compares total order price against total payments made 
         to calculate outstanding balance due or deposits on hand.
         """
         # 1. Fetch order details
@@ -632,20 +613,20 @@ class OrdersService:
         Use Case: Historical lookup of non-deleted orders (All time or by time period).
         """
         stmt = select(orders_table).where(orders_table.c.is_deleted == False)
-
+        
         if start_date:
             stmt = stmt.where(orders_table.c.order_date >= start_date)
         if end_date:
             stmt = stmt.where(orders_table.c.order_date <= end_date)
-
+            
         rows = self.conn.execute(stmt).fetchall()
         return [dict(row._mapping) for row in rows]
-
+    
     def delete_order_record(self, order_id: int):
         """
         Use Case: Archives an order from view by soft-deleting it.
-        Note: If the order is NOT cancelled first, this will hide the order
-        BUT the stock stays deducted. Usually, you want to cancel_order()
+        Note: If the order is NOT cancelled first, this will hide the order 
+        BUT the stock stays deducted. Usually, you want to cancel_order() 
         before deleting it to restore physical plant stock.
         """
         # 1. Verify order exists

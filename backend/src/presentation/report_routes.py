@@ -1,17 +1,23 @@
-from datetime import date
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy.engine import Connection
+from typing import Optional
+from datetime import date
 
-from src.application.excel_export_service import generate_monthly_excel
+from src.connection import get_db_connection
+from src.infrastructure.repositories import InventoryRepository, OrderRepository
 from src.application.inventory_service import InventoryService
 from src.application.orders_service import OrdersService
-from src.connection import get_db_connection
-from src.exceptions import OrderNotFound
-from src.infrastructure.repositories import InventoryRepository, OrderRepository
+from src.application.excel_export_service import generate_monthly_excel
 
+from src.exceptions import(
+    InsufficientStockError,
+    InvalidBatchCountError,
+    InvalidPaymentAmount,
+    OrderNotFound,
+    OrderIsAlreadyCancelled,
+    PaymentNotFound
+)
 router = APIRouter(prefix="/reports", tags=["Business Intelligence & Reports"])
 
 # =====================================================================
@@ -20,8 +26,8 @@ router = APIRouter(prefix="/reports", tags=["Business Intelligence & Reports"])
 
 @router.get("/batches", status_code=status.HTTP_200_OK)
 def get_batches_report(
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
+    start_date: Optional[date] = None, 
+    end_date: Optional[date] = None, 
     only_available: bool = False,
     conn: Connection = Depends(get_db_connection)
 ):
@@ -33,9 +39,10 @@ def get_batches_report(
     try:
         data = service.get_active_batches_report(start_date, end_date, only_available)
         return {"status": "success", "data": data}
-
+    
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
 
 # =====================================================================
 # 💳 FINANCIAL AUDITING
@@ -51,12 +58,13 @@ def get_order_summary(order_id: int, conn: Connection = Depends(get_db_connectio
     try:
         summary = service.get_order_financial_summary(order_id)
         return {"status": "success", "summary": summary}
-
+    
     except OrderNotFound as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e))
 
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 # =====================================================================
 # 📈 SALES & CUSTOMER INTELLIGENCE
@@ -64,8 +72,8 @@ def get_order_summary(order_id: int, conn: Connection = Depends(get_db_connectio
 
 @router.get("/customers", status_code=status.HTTP_200_OK)
 def get_customer_sales_report(
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
+    start_date: Optional[date] = None, 
+    end_date: Optional[date] = None, 
     conn: Connection = Depends(get_db_connection)
 ):
     """
@@ -76,15 +84,15 @@ def get_customer_sales_report(
     try:
         data = service.get_customer_sales_report(start_date, end_date)
         return {"status": "success", "data": data}
-
+    
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.get("/products/ranking", status_code=status.HTTP_200_OK)
 def get_product_sales_ranking(
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
+    start_date: Optional[date] = None, 
+    end_date: Optional[date] = None, 
     conn: Connection = Depends(get_db_connection)
 ):
     """
@@ -95,7 +103,7 @@ def get_product_sales_ranking(
     try:
         data = service.get_top_selling_products_report(start_date, end_date)
         return {"status": "success", "data": data}
-
+    
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 

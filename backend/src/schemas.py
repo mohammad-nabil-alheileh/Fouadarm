@@ -1,9 +1,8 @@
 from datetime import date
-from decimal import Decimal
-from typing import List, Optional
 
 from pydantic import BaseModel, model_validator
-
+from decimal import Decimal
+from typing import Optional, List
 
 class NewProductRequest(BaseModel):
     product_name: str
@@ -41,8 +40,8 @@ class OrderItemRequest(BaseModel):
     def normalize_unit_price(cls, values):
         if isinstance(values, dict):
             normalized = dict(values)
-            if normalized.get("unit_price") is None and normalized.get("price_per_unit") is not None:
-                normalized["unit_price"] = normalized["price_per_unit"]
+            if normalized.get("price_per_unit") is None and normalized.get("unit_price") is not None:
+                normalized["price_per_unit"] = normalized["unit_price"]
             return normalized
         return values
 
@@ -55,7 +54,6 @@ class PlaceOrderRequest(BaseModel):
     price_override: Optional[Decimal] = None
 
 class OrderResponse(BaseModel):
-    order_id: int
     customer_name: str
     order_date: date
     items: List[OrderItemRequest]

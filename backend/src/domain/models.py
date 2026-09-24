@@ -1,12 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
-
-from src.exceptions import (
-    InsufficientStockError,
-    OrderIsAlreadyCancelled,
-)
-
+from src.exceptions import InsufficientStockError, BatchAlreadyAssignedToOrderError,InvalidBatchCountError, InvalidPaymentAmount, OrderNotFound, OrderIsAlreadyCancelled, PaymentNotFound
 
 class ProductDomain:
     def __init__(self, product_id: int, product_name: str, unit_price: Decimal, is_deleted: bool = False):
@@ -21,8 +16,8 @@ class ProductBatchDomain:
         self.product_batch_id = product_batch_id
         self.product_id = product_id
         self.date_entered = date_entered
-        self.count = count
-        self.trashed = trashed
+        self.count = count          
+        self.trashed = trashed      
         self.allocated = 0
         self.quarter = quarter
         self.foot = foot
@@ -40,9 +35,17 @@ class ProductBatchDomain:
             raise InsufficientStockError(f"Cannot allocate {quantity}. Only {self.available_stock} items left in batch {self.product_batch_id}.")
         self.allocated += quantity
 
+    def mark_as_deleted(self):
+            """Domain Action: Ensures we can't allocate from a dead batch"""
+            if self.allocated > 0:
+                raise BatchAlreadyAssignedToOrderError("Cannot delete a batch that already has items allocated to orders.")
+            self.is_deleted = True
+
 
 class PaymentDomain:
-    def __init__(self, amount: Decimal, payment_date: date, payment_method: str, is_deleted: bool = False):
+    def __init__(self, payment_id: int, order_id: int, amount: Decimal, payment_date: date, payment_method: str, is_deleted: bool = False):
+        self.payment_id = payment_id
+        self.order_id = order_id
         self.payment_method = payment_method
         self.amount = amount
         self.payment_date = payment_date
@@ -75,15 +78,15 @@ class OrderAggregate:
 
     def add_item(self, batch: ProductBatchDomain, quantity: int, price_per_unit: Decimal):
         """
-        Business Rule: Verify stock availability inside the domain
+        Business Rule: Verify stock availability inside the domain 
         before adding it to the order.
         """
         if self.is_cancelled:
             raise OrderIsAlreadyCancelled("Cannot add items to a cancelled order.")
-
+        
         # 1. Enforce inventory check
         batch.allocate(quantity)
-
+        
         # 2. Add item to order list
         item = OrderItemDomain(
             product_id=batch.product_id,
@@ -93,22 +96,26 @@ class OrderAggregate:
         )
         self.items.append(item)
 
-    def add_payment(self, payment_method: str, amount: Decimal, payment_date: date):
-        """Business Rule: Record a payment transaction against this order lifecycle"""
-        if self.is_cancelled:
-            raise OrderIsAlreadyCancelled("Cannot process payment for a cancelled order.")
-
-        payment = PaymentDomain(
-            payment_method=payment_method,
-            amount=amount,
-            payment_date=payment_date
-        )
-        self.payments.append(payment)
+    def add_payment(self, payment_method: str, amount: Decimal, payment_id: int, payment_date: date):
+            """Business Rule: Record a payment transaction against this order lifecycle"""
+            if self.is_cancelled:
+                raise OrderIsAlreadyCancelled("Cannot process payment for a cancelled order.")
+            
+            # We don't have an order_id yet when creating a brand new order, 
+            # the repository will assign it during save.
+            payment = PaymentDomain(
+                payment_id=payment_id,
+                order_id=0, 
+                payment_method=payment_method,
+                amount=amount,
+                payment_date=payment_date
+            )
+            self.payments.append(payment)
 
     @property
     def total_price(self) -> Decimal:
         """
-        Business Rule: Use manual user override if provided;
+        Business Rule: Use manual user override if provided; 
         otherwise, calculate dynamic sum.
         """
         if self.manual_total_override is not None:

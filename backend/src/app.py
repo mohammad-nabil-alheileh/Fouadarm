@@ -1,16 +1,16 @@
 import logging
 from datetime import date
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
-from src.application.excel_export_service import generate_monthly_excel
-from src.connection import engine
 from src.presentation.inventory_routes import router as inventory_router
 from src.presentation.order_routes import router as order_router
 from src.presentation.report_routes import router as report_router
+from src.connection import engine
+from src.application.excel_export_service import generate_monthly_excel
 
 # Without this, logger.info()/logger.exception() calls anywhere in the app
 # are silently dropped — Python's logging module only prints WARNING and

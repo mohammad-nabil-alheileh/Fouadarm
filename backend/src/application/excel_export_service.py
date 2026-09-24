@@ -1,4 +1,13 @@
 # src/application/excel_export_service.py
+"""
+Builds a monthly Excel workbook (Products, Batches, Orders, Payments,
+Customers) from the database, scoped to a single calendar month.
+
+Products is a current-catalog snapshot — products aren't a time-scoped
+concept, so it always reflects "right now" regardless of which month the
+rest of the report covers. Batches, Orders, Payments, and Customers are all
+filtered to the given month only (never all-time).
+"""
 import calendar
 from datetime import date
 from decimal import Decimal
@@ -10,9 +19,11 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from sqlalchemy.engine import Connection
 
-from src.application.orders_service import OrdersService
 from src.infrastructure.repositories import InventoryRepository, OrderRepository
+from src.application.orders_service import OrdersService
 
+# backend/src/application/excel_export_service.py -> parents[2] == backend/
+# (== /app inside the container, which is bind-mounted to ./backend on the host)
 EXPORTS_DIR = Path(__file__).resolve().parents[2] / "exports"
 
 
@@ -21,6 +32,11 @@ def _month_bounds(year: int, month: int) -> tuple[date, date]:
     last_day = calendar.monthrange(year, month)[1]
     end = date(year, month, last_day)
     return start, end
+
+
+def _num(value):
+    """openpyxl can't write Decimal directly — convert to float for storage."""
+    return float(value) if isinstance(value, Decimal) else value
 
 
 def _write_sheet(wb: Workbook, title: str, headers: list, rows: list):
@@ -86,12 +102,12 @@ def generate_monthly_excel(
     customer_rows = sorted(customers.values(), key=lambda c: c["total_spent"], reverse=True)
 
     wb = Workbook()
-    wb.remove(wb.active) # drop the default blank "Sheet"
+    wb.remove(wb.active)
 
     _write_sheet(
         wb, "Products",
         headers=["Product ID", "Product Name", "Unit Price", "Quantity In Stock"],
-        rows=[[p["id"], p["product_name"], (p["unit_price"]), p["quantity"]] for p in products],
+        rows=[[p["id"], p["product_name"], _num(p["unit_price"]), p["quantity"]] for p in products],
     )
 
     _write_sheet(
@@ -109,7 +125,7 @@ def generate_monthly_excel(
         items_str = ", ".join(f"{it['product_name']} x{it['quantity']}" for it in o["items"])
         order_rows.append([
             o["order_id"], o["customer_name"], o["order_date"], items_str,
-            (o["total_amount"]), (o["total_paid"]), (o["remaining_balance"]),
+            _num(o["total_amount"]), _num(o["total_paid"]), _num(o["remaining_balance"]),
             "Yes" if o["is_fully_paid"] else "No",
         ])
     _write_sheet(
@@ -121,13 +137,13 @@ def generate_monthly_excel(
     _write_sheet(
         wb, "Payments",
         headers=["Order ID", "Customer", "Payment Method", "Amount", "Date"],
-        rows=[[p["order_id"], p["customer_name"], p["payment_method"], (p["amount"]), p["date"]] for p in payments],
+        rows=[[p["order_id"], p["customer_name"], p["payment_method"], _num(p["amount"]), p["date"]] for p in payments],
     )
 
     _write_sheet(
         wb, "Customers",
         headers=["Customer", "Orders", "Total Spent", "Total Paid"],
-        rows=[[c["customer_name"], c["order_count"], (c["total_spent"]), (c["total_paid"])] for c in customer_rows],
+        rows=[[c["customer_name"], c["order_count"], _num(c["total_spent"]), _num(c["total_paid"])] for c in customer_rows],
     )
 
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
